@@ -48,8 +48,13 @@ color_weights = {
 is_first_move = True
 
 distancia_manteiga = [[None] * 6 for _ in range(6)]
+possible_zeros_manteiga = 36
+
 calor_torradeira = [[None] * 6 for _ in range(6)]
+possible_zeros_torradeira = 36
+
 cheiro_bolor = [[None] * 6 for _ in range(6)]
+possible_zeros_bolor = 36
 
 
 # Funções Auxiliares
@@ -122,9 +127,11 @@ def filter_table_min(table1, table2):
 
 def populate_tabela(table):
     aux_tables = []
+    zeros = 0
     for row in range(len(table1)):
         for col in range(len(table1[0])):
             if table[row][col] == 0:
+                zeros += 1
                 temp_table = [[None] * len(table[0]) for _ in range(len(table1))]
                 disperse_table(temp_table, 0, row, col)
                 aux_tables.append(temp_table)
@@ -133,24 +140,53 @@ def populate_tabela(table):
         result_table = aux_tables[0]
         for i in range(1, len(aux_tables)):
             filter_table_min(result_table, aux_tables[i])
-        return result_table    
-    return table
+        return result_table, zeros
+    return table, None
+
+def has_numbers(table):
+    return any(cell is not None for row in table for cell in row)
+
 
 # Inicialização
 aux = [[None] * 6 for _ in range(6)]
 
 
-def location_manteiga(distance, row, col):
-    global distancia_manteiga, is_first_move
-    if is_first_move:
-        disperse_table(distancia_manteiga, distance, row, col)
-        print_table(distancia_manteiga, "Tabela de Distância da Manteiga")
-        is_first_move = False
-    else: 
-        disperse_table(aux, distance, row, col)
-        filter_table(distancia_manteiga, aux)
-        distancia_manteiga = populate_tabela(distancia_manteiga)
-        print_table(distancia_manteiga, "Tabela de Distância da Manteiga")
+def get_all_objects():
+    global distancia_manteiga, calor_torradeira, cheiro_bolor, is_first_move
+
+    distance_manteiga = get_distance("Distância Manteiga")
+    if distance_manteiga and possible_zeros_manteiga != 1:
+        if has_numbers(distancia_manteiga):
+            disperse_table(aux, distance_manteiga, robot_row, robot_col)
+            filter_table(distancia_manteiga, aux)
+            distancia_manteiga, possible_zeros_manteiga = populate_tabela(distancia_manteiga)
+            print_table(distancia_manteiga, "Tabela de Distância da Manteiga")
+        else:
+            disperse_table(distancia_manteiga, distance_manteiga, robot_row, robot_col)
+    wait(1000)
+
+    distance_torradeira = get_distance("Calor Torradeira")
+    if distance_torradeira and possible_zeros_torradeira != 1:
+        if has_numbers(calor_torradeira):
+            disperse_table(aux, distance_torradeira, robot_row, robot_col)
+            filter_table(calor_torradeira, aux)
+            calor_torradeira, possible_zeros_torradeira = populate_tabela(calor_torradeira)
+            print_table(calor_torradeira, "Tabela de Distância da Torradeira")
+        else:
+            disperse_table(calor_torradeira, distance_torradeira, robot_row, robot_col)
+    wait(1000)
+
+    distance_bolor = get_distance("Cheiro Bolor")
+    if distance_bolor and possible_zeros_bolor != 1:
+        if has_numbers(cheiro_bolor):
+            disperse_table(aux, distance_bolor, robot_row, robot_col)
+            filter_table(cheiro_bolor, aux)
+            cheiro_bolor, possible_zeros_bolor = populate_tabela(cheiro_bolor)
+            print_table(cheiro_bolor, "Tabela de Distância do Bolor")
+        else:
+            disperse_table(cheiro_bolor, distance_bolor, robot_row, robot_col)
+    wait(1000)
+
     
 
 # Funções de movimento
@@ -214,16 +250,6 @@ def get_distance(text):
 
     ev3.screen.clear()
     return distance if has_found else None
-
-def get_all_objects():
-    global distancia_manteiga, calor_torradeira, cheiro_bolor
-    val = get_distance("Distância Manteiga")
-    location_manteiga(val, robot_row, robot_col)
-    wait(1000)
-    calor_torradeira[robot_row][robot_col] = get_distance("Calor Torradeira")
-    wait(1000)
-    cheiro_bolor[robot_row][robot_col] = get_distance("Cheiro Bolor")
-    wait(1000)
 
 def verify_manteiga():
     return distancia_manteiga[robot_row][robot_col] == 0
@@ -289,4 +315,4 @@ def realizar_jogada():
 #while True:
 #    realizar_jogada()
 
-get_all_objects()
+#get_all_objects()
