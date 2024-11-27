@@ -54,7 +54,6 @@ calor_torradeira = [[None] * 6 for _ in range(6)]
 possible_zeros_torradeira = 36
 
 cheiro_bolor = [[None] * 6 for _ in range(6)]
-possible_zeros_bolor = 36
 
 
 # Funções Auxiliares
@@ -177,14 +176,8 @@ def get_all_objects():
     wait(1000)
 
     distance_bolor = get_distance("Cheiro Bolor")
-    if distance_bolor and possible_zeros_bolor != 1:
-        if has_numbers(cheiro_bolor):
-            disperse_table(aux, distance_bolor, robot_row, robot_col)
-            filter_table(cheiro_bolor, aux)
-            cheiro_bolor, possible_zeros_bolor = populate_tabela(cheiro_bolor)
-            print_table(cheiro_bolor, "Tabela de Distância do Bolor")
-        else:
-            disperse_table(cheiro_bolor, distance_bolor, robot_row, robot_col)
+    if distance_bolor:
+        disperse_table(cheiro_bolor, distance_bolor, robot_row, robot_col)
     wait(1000)
 
     
