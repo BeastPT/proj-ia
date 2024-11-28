@@ -7,12 +7,14 @@ from pybricks.robotics import DriveBase
 from sys import exit
 import time
 
+from collections import deque
+
 # Inicialização
 ev3 = EV3Brick()
 color_sensor = ColorSensor(Port.S2)
 touch_sensorLeft = TouchSensor(Port.S3)
 touch_sensorRight = TouchSensor(Port.S4)
-distance_sensor = UltrasonicSensor(Port.S1)
+#distance_sensor = UltrasonicSensor(Port.S1)
 left_motor = Motor(Port.D)
 right_motor = Motor(Port.A)
 
@@ -127,11 +129,11 @@ def filter_table_min(table1, table2):
 def populate_tabela(table):
     aux_tables = []
     zeros = 0
-    for row in range(len(table1)):
-        for col in range(len(table1[0])):
+    for row in range(len(table)):
+        for col in range(len(table[0])):
             if table[row][col] == 0:
                 zeros += 1
-                temp_table = [[None] * len(table[0]) for _ in range(len(table1))]
+                temp_table = [[None] * len(table[0]) for _ in range(len(table))]
                 disperse_table(temp_table, 0, row, col)
                 aux_tables.append(temp_table)
 
@@ -151,36 +153,156 @@ aux = [[None] * 6 for _ in range(6)]
 
 
 def get_all_objects():
-    global distancia_manteiga, calor_torradeira, cheiro_bolor, is_first_move
+    global distancia_manteiga, calor_torradeira, cheiro_bolor, is_first_move, possible_zeros_manteiga, possible_zeros_torradeira
 
-    distance_manteiga = get_distance("Distância Manteiga")
-    if distance_manteiga and possible_zeros_manteiga != 1:
-        if has_numbers(distancia_manteiga):
-            disperse_table(aux, distance_manteiga, robot_row, robot_col)
-            filter_table(distancia_manteiga, aux)
-            distancia_manteiga, possible_zeros_manteiga = populate_tabela(distancia_manteiga)
-            print_table(distancia_manteiga, "Tabela de Distância da Manteiga")
-        else:
-            disperse_table(distancia_manteiga, distance_manteiga, robot_row, robot_col)
+    if possible_zeros_manteiga != 1:
+        distance_manteiga = get_distance("Distância Manteiga")
+        if distance_manteiga is not None:
+            if has_numbers(distancia_manteiga):
+                disperse_table(aux, distance_manteiga, robot_row, robot_col)
+                filter_table(distancia_manteiga, aux)
+                distancia_manteiga, possible_zeros_manteiga = populate_tabela(distancia_manteiga)
+                #print_table(distancia_manteiga, "Tabela de Distância da Manteiga")
+            else:
+                disperse_table(distancia_manteiga, distance_manteiga, robot_row, robot_col)
     wait(1000)
 
-    distance_torradeira = get_distance("Calor Torradeira")
-    if distance_torradeira and possible_zeros_torradeira != 1:
-        if has_numbers(calor_torradeira):
-            disperse_table(aux, distance_torradeira, robot_row, robot_col)
-            filter_table(calor_torradeira, aux)
-            calor_torradeira, possible_zeros_torradeira = populate_tabela(calor_torradeira)
-            print_table(calor_torradeira, "Tabela de Distância da Torradeira")
-        else:
-            disperse_table(calor_torradeira, distance_torradeira, robot_row, robot_col)
+    if possible_zeros_torradeira != 1:
+        distance_torradeira = get_distance("Calor Torradeira")
+        if distance_torradeira is not None:
+            if has_numbers(calor_torradeira):
+                disperse_table(aux, distance_torradeira, robot_row, robot_col)
+                filter_table(calor_torradeira, aux)
+                calor_torradeira, possible_zeros_torradeira = populate_tabela(calor_torradeira)
+                #print_table(calor_torradeira, "Tabela de Distância da Torradeira")
+            else:
+                disperse_table(calor_torradeira, distance_torradeira, robot_row, robot_col)
     wait(1000)
 
     distance_bolor = get_distance("Cheiro Bolor")
-    if distance_bolor:
+    if distance_bolor is not None:
         disperse_table(cheiro_bolor, distance_bolor, robot_row, robot_col)
     wait(1000)
-
+    print_all_tables(distancia_manteiga, calor_torradeira, cheiro_bolor)
     
+
+def find_nearest_zero(table, start_row, start_col):
+    """
+    Finds the nearest zero in a 6x6 table from the given row and column.
+    Uses Breadth-First Search (BFS) to determine the shortest distance.
+    """
+    rows, cols = len(table), len(table[0])
+    visited = [[False] * cols for _ in range(rows)]
+    queue = deque([(start_row, start_col, 0)])  # (row, col, distance)
+
+    while queue:
+        row, col, distance = queue.popleft()
+
+        # Check boundaries and if already visited
+        if row < 0 or col < 0 or row >= rows or col >= cols or visited[row][col]:
+            continue
+
+        # Mark as visited
+        visited[row][col] = True
+
+        # Check if the current cell is a 0
+        if table[row][col] == 0:
+            return (row, col, distance)
+
+        # Add neighbors to the queue
+        queue.extend([
+            (row - 1, col, distance + 1),  # Up
+            (row + 1, col, distance + 1),  # Down
+            (row, col - 1, distance + 1),  # Left
+            (row, col + 1, distance + 1)   # Right
+        ])
+
+    # If no zero is found
+    return None
+
+def find_nearest_zero_oriented(table, start_row, start_col):
+    """
+    Encontra o zero mais próximo, priorizando a direção para onde o robô está virado.
+    Usa BFS para determinar a menor distância.
+    """
+    rows, cols = len(table), len(table[0])
+    visited = [[False] * cols for _ in range(rows)]
+    queue = deque([(start_row, start_col, 0)])  # (row, col, distance)
+    prioritized_queue = []
+
+    while queue:
+        row, col, distance = queue.popleft()
+
+        # Verificar limites e se já foi visitado
+        if row < 0 or col < 0 or row >= rows or col >= cols or visited[row][col]:
+            continue
+
+        # Marcar como visitado
+        visited[row][col] = True
+
+        # Verificar se a célula atual é um zero
+        if table[row][col] == 0:
+            if (row - start_row == change_row) and (col - start_col == change_col):
+                # Priorizar se estiver na direção do robô
+                return (row, col, distance)
+            else:
+                # Adicionar para consideração posterior
+                prioritized_queue.append((row, col, distance))
+            continue
+
+        # Adicionar vizinhos à fila
+        queue.extend([
+            (row - 1, col, distance + 1),  # Para cima
+            (row + 1, col, distance + 1),  # Para baixo
+            (row, col - 1, distance + 1),  # Para a esquerda
+            (row, col + 1, distance + 1)   # Para a direita
+        ])
+
+    # Retornar o primeiro zero encontrado se nenhum estiver na direção do robô
+    return prioritized_queue[0] if prioritized_queue else None
+
+
+def find_nearest_zeros(table, start_row, start_col):
+    """
+    Finds all zeros at the nearest distance from the given position in a 6x6 table.
+    Uses Breadth-First Search (BFS) to determine the shortest distance and returns all zeros at that distance.
+    """
+    rows, cols = len(table), len(table[0])
+    visited = [[False] * cols for _ in range(rows)]
+    queue = deque([(start_row, start_col, 0)])  # (row, col, distance)
+    nearest_zeros = []
+    min_distance = float('inf')
+
+    while queue:
+        row, col, distance = queue.popleft()
+
+        # Check boundaries and if already visited
+        if row < 0 or col < 0 or row >= rows or col >= cols or visited[row][col]:
+            continue
+
+        # Mark as visited
+        visited[row][col] = True
+
+        # If a zero is found
+        if table[row][col] == 0:
+            if distance < min_distance:
+                # Found a closer zero, reset results
+                nearest_zeros = [(row, col)]
+                min_distance = distance
+            elif distance == min_distance:
+                # Add to results if it's the same shortest distance
+                nearest_zeros.append((row, col))
+            continue  # Do not explore further from this cell
+
+        # Add neighbors to the queue
+        queue.extend([
+            (row - 1, col, distance + 1),  # Up
+            (row + 1, col, distance + 1),  # Down
+            (row, col - 1, distance + 1),  # Left
+            (row, col + 1, distance + 1)   # Right
+        ])
+
+    return nearest_zeros, min_distance if nearest_zeros else None
 
 # Funções de movimento
 def forward(distance):
@@ -233,7 +355,7 @@ def get_distance(text):
             if weight == 0:
                 distance = 0
                 ev3.screen.print(str(current_color) + "\n Current Distance: \n" + str(distance))
-                wait(1000)
+                wait(2500)
                 break
 
             distance += weight
@@ -264,7 +386,6 @@ def verify_objects():
         ev3.screen.clear()
         ev3.screen.draw_text(10, 10, "CAISTE NA TORRADEIRA")
         wait(10000)
-        exit()
 
     if verify_bolor():
         ev3.screen.clear()
@@ -298,14 +419,39 @@ def andar_casa():
     ev3.screen.print("Col: " + str(robot_col) + "\nRow: " + str(robot_row))
     wait(2000)
 
+def check_pause_and_wait(TEMPO_ENTRE_JOGADA):
+    paused = False
+    for i in range(TEMPO_ENTRE_JOGADA/100):
+        if (touch_sensorLeft.pressed() or touch_sensorRight.pressed()) and not False:
+            paused = True
+            ev3.screen.print("EM PAUSA")
+        wait(TEMPO_ENTRE_JOGADA/100)
+
+    while paused:
+        if touch_sensorLeft.pressed() or touch_sensorRight.pressed():
+            paused = False
+            ev3.screen.print("SAIU DE ESPERA")
+        wait(100)
+
+
 def realizar_jogada():
     get_all_objects()
-    andar_casa()
     verify_objects()
+    row, col, distance = find_nearest_zero_oriented(distancia_manteiga, robot_row, robot_col)
+    if distance:
+        print(row, col, distance)
+    # zeros, distance = find_nearest_zeros(distancia_manteiga, robot_row, robot_col)
+    # if distance:
+    #     print(zeros)
+    andar_casa()
     print_all_tables(distancia_manteiga, calor_torradeira, cheiro_bolor)
-    wait(TEMPO_ENTRE_JOGADA)
+    check_pause_and_wait(TEMPO_ENTRE_JOGADA)
 
-#while True:
-#    realizar_jogada()
 
+while True:
+    realizar_jogada()
+
+
+#disperse_table(calor_torradeira, 0, 0, 0)
+#print_table(calor_torradeira, "Tabela de Distância da Torradeira")
 #get_all_objects()
