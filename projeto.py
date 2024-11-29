@@ -28,7 +28,6 @@ robot_row = 0
 # Variáveis de tempo
 TEMPO_ENTRE_JOGADA = 10000 # 10 segundos
 
-
 # Variáveis para direção
 change_col = 1 # -1 0 1
 change_row = 0 # -1 0 1
@@ -55,7 +54,7 @@ possible_zeros_manteiga = 36
 calor_torradeira = [[None] * 6 for _ in range(6)]
 possible_zeros_torradeira = 36
 
-cheiro_bolor = [[None] * 6 for _ in range(6)]
+position_bolor = {'row': 5, 'col': 5}
 
 
 # Funções Auxiliares
@@ -93,7 +92,6 @@ def print_all_tables(dist_manteiga, calor_torrad, cheiro_bol):
     """
     print_table(dist_manteiga, "Tabela de Distância da Manteiga")
     print_table(calor_torrad, "Tabela de Calor da Torradeira")
-    print_table(cheiro_bol, "Tabela de Cheiro de Bolor")
 
 def disperse_table(table, value, row, col, radius=6):
     for r in range(row - radius, row + radius + 1):
@@ -153,7 +151,7 @@ aux = [[None] * 6 for _ in range(6)]
 
 
 def get_all_objects():
-    global distancia_manteiga, calor_torradeira, cheiro_bolor, is_first_move, possible_zeros_manteiga, possible_zeros_torradeira
+    global distancia_manteiga, calor_torradeira, is_first_move, possible_zeros_manteiga, possible_zeros_torradeira
 
     if possible_zeros_manteiga != 1:
         distance_manteiga = get_distance("Distância Manteiga")
@@ -179,11 +177,7 @@ def get_all_objects():
                 disperse_table(calor_torradeira, distance_torradeira, robot_row, robot_col)
     wait(1000)
 
-    distance_bolor = get_distance("Cheiro Bolor")
-    if distance_bolor is not None:
-        disperse_table(cheiro_bolor, distance_bolor, robot_row, robot_col)
-    wait(1000)
-    print_all_tables(distancia_manteiga, calor_torradeira, cheiro_bolor)
+    print_all_tables(distancia_manteiga, calor_torradeira)
     
 
 def find_nearest_zero(table, start_row, start_col):
@@ -373,7 +367,7 @@ def verify_torradeira():
     return calor_torradeira[robot_row][robot_col] == 0
 
 def verify_bolor():
-    return cheiro_bolor[robot_row][robot_col] == 0
+    return robot_row == position_bolor["row"] and robot_col == position_bolor["col"]
 
 def verify_objects():
     if verify_manteiga():
@@ -385,13 +379,7 @@ def verify_objects():
     if verify_torradeira():
         ev3.screen.clear()
         ev3.screen.draw_text(10, 10, "CAISTE NA TORRADEIRA")
-        wait(10000)
-
-    if verify_bolor():
-        ev3.screen.clear()
-        ev3.screen.draw_text(10, 10, "DERROTA")
-        wait(10000)
-        exit()
+        wait(10000) 
 
 
 
@@ -419,6 +407,27 @@ def andar_casa():
     ev3.screen.print("Col: " + str(robot_col) + "\nRow: " + str(robot_row))
     wait(2000)
 
+def andar_bolor():
+    #robot_col, robot_row
+    global position_bolor
+    # o bolor anda sempre ate se aproximar do robot, onde o bolor comeca na casa 5,5 e o robot na 0, 0 ele segue a prioridade N S E O
+    if robot_row < position_bolor["row"]: # Vai andar para cima
+        position_bolor["row"] -= 1
+    elif robot_row > position_bolor["row"]: # Vai andar para baixo
+        position_bolor["row"] += 1
+    elif robot_row == position_bolor["row"]: # Vai andar para a esquerda/direita
+        if robot_col < position_bolor["col"]:
+            position_bolor["col"] -= 1
+        elif robot_col > position_bolor["col"]:
+            position_bolor["col"] += 1
+  
+    if robot_row == position_bolor["row"] and robot_col == position_bolor["col"]:
+        ev3.screen.clear()
+        ev3.screen.draw_text(10, 10, "DERROTA")
+        wait(10000)
+        exit()
+
+
 def check_pause_and_wait(TEMPO_ENTRE_JOGADA):
     paused = False
     for i in range(TEMPO_ENTRE_JOGADA/100):
@@ -444,7 +453,7 @@ def realizar_jogada():
     # if distance:
     #     print(zeros)
     andar_casa()
-    print_all_tables(distancia_manteiga, calor_torradeira, cheiro_bolor)
+    print_all_tables(distancia_manteiga, calor_torradeira)
     check_pause_and_wait(TEMPO_ENTRE_JOGADA)
 
 
