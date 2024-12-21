@@ -345,7 +345,7 @@ class GameBoard:
         if self.game_over:
             return
 
-        self.bolor_pos['row'], self.bolor_pos['col'] = simulate_move_bolor(self.robot_pos['row'], self.robot_pos['col'])
+        self.bolor_pos['row'], self.bolor_pos['col'] = self.simulate_move_bolor(self.robot_pos['row'], self.robot_pos['col'])
 
         # Verificar vitória/derrota
         self.check_game_state()
