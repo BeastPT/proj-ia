@@ -396,42 +396,60 @@ class GameBoard:
         """
         score = 0
 
+        if not (0 <= new_row < self.size and 0 <= new_col < self.size):
+            return -float('inf')  # Penalidade alta para movimentos fora dos limites
+# Factor 1: Distância para a manteiga
+        if self.manteiga_pos:  # Certifique-se de que a posição da manteiga está definida
+            butter_distance = abs(new_row - self.manteiga_pos['row']) + abs(new_col - self.manteiga_pos['col'])
+            bolor_to_butter = abs(self.bolor_pos['row'] - self.manteiga_pos['row']) + abs(self.bolor_pos['col'] - self.manteiga_pos['col'])
 
-        # Factor 1: Distance to butter
-        butter_distance = self.distancia_manteiga[new_row][new_col]
-        if butter_distance is not None:
-            # Lower distance = higher score
-            score += (10 - butter_distance) * 2
+            # Se o robô está mais perto ou à mesma distância da manteiga que o bolor
+            if butter_distance <= bolor_to_butter:
+                score += (10 - butter_distance) * 4  # Priorizamos ir até a manteiga
+            else:
+                score += (10 - butter_distance) * 2
+        else:
+            butter_distance = float('inf')  # Defina como infinito se a posição da manteiga não estiver definida
+
+        # Factor 2: Calor da torradeira
+        if self.calor_torradeira and 0 <= new_row < len(self.calor_torradeira) and 0 <= new_col < len(self.calor_torradeira[0]):
+            heat_value = self.calor_torradeira[new_row][new_col] if self.calor_torradeira[new_row][new_col] is not None else 0
+        else:
+            heat_value = 0
+        score -= heat_value * 3
         
-        # Factor 2: Heat from toaster
-        heat_value = self.calor_torradeira[new_row][new_col]
-        if heat_value is not None:
-            # Higher heat = lower score
-            score -= heat_value * 3
-        
+        # Factor 3: Simular movimento do bolor e avaliar risco
         bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
-        # ver se a posição do bolor é igual à posição do robot/manteiga/torradeira e atribuir scores
 
-
-        # Factor 3: Distance from mold
-        # mold_distance = abs(new_row - self.bolor_pos['row']) + abs(new_col - self.bolor_pos['col'])
-        # if mold_distance < 2:  # If mold is too close
-        #     score -= 20
-        # else:
-        #     score += mold_distance
-            
-        # Factor 4: Avoid moving towards mold
-        if (new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']):
-            score -= 5
-        
-        # Bonus: Reaching butter position
-        if (new_row == self.manteiga_pos['row'] and new_col == self.manteiga_pos['col']):
-            score += 50
-            
-        # Penalty: Moving to toaster position
-        if (new_row == self.torradeira_pos['row'] and new_col == self.torradeira_pos['col']):
+        # Penalizar se o bolor puder alcançar a posição simulada
+        if new_row == bolor_row and new_col == bolor_col:
             score -= 100
-        
+
+        # Penalizar se ficar na mesma linha/coluna que o bolor
+        if new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']:
+            score -= 15
+
+        # Se estamos em loop, adicionar componente aleatório para quebrar padrão
+        if hasattr(self, 'last_positions'):
+            if len(self.last_positions) >= 4:
+                if (new_row, new_col) in self.last_positions[-4:]:
+                    score += random.randint(-20, 20)  # Componente aleatório para quebrar loops
+        else:
+            self.last_positions = []
+
+        # Armazenar a posição atual
+        self.last_positions.append((new_row, new_col))
+        if len(self.last_positions) > 6:  # Manter apenas as últimas 6 posições
+            self.last_positions.pop(0)
+
+        # Bonus: Alcançar a manteiga
+        if self.manteiga_pos and new_row == self.manteiga_pos['row'] and new_col == self.manteiga_pos['col']:
+            score += 100
+
+        # Penalidade: Mover para a torradeira
+        if self.torradeira_pos and new_row == self.torradeira_pos['row'] and new_col == self.torradeira_pos['col']:
+            score -= 100
+
         return score
 
     def play_game_autonomous(self):
@@ -552,5 +570,5 @@ if __name__ == "__main__":
     # if mode == "1":
     #     play_game()
     # else:
-        #game.play_game_autonomous()
     game.play_game_autonomous()
+        
