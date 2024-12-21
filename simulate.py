@@ -339,6 +339,111 @@ class GameBoard:
         # Verificar vitória/derrota
         self.check_game_state()
 
+
+
+
+
+    def get_autonomous_move(self):
+        """
+        Determines the best move for the robot based on:
+        - Distance to butter (manteiga)
+        - Heat from toaster (torradeira)
+        - Discovered barriers
+        - Mold (bolor) position
+        Returns: 'w', 'a', 's', or 'd'
+        """
+        possible_moves = []
+        current_row, current_col = self.robot_pos['row'], self.robot_pos['col']
+        directions = [('w', -1, 0), ('s', 1, 0), ('a', 0, -1), ('d', 0, 1)]
+        
+        # Check each possible move
+        for move, row_delta, col_delta in directions:
+            new_row = current_row + row_delta
+            new_col = current_col + col_delta
+            
+            # Skip if move is invalid
+            if not (0 <= new_row < self.size and 0 <= new_col < self.size):
+                continue
+                
+            # Skip if there's a discovered barrier
+            if not self.can_move((current_row, current_col), (new_row, new_col)):
+                continue
+                
+            # Calculate score for this move
+            score = self._evaluate_move(new_row, new_col)
+            possible_moves.append((move, score))
+        
+        # If no valid moves, return random move
+        if not possible_moves:
+            return random.choice(['w', 'a', 's', 'd'])
+        
+        # Return move with highest score
+        return max(possible_moves, key=lambda x: x[1])[0]
+
+    def _evaluate_move(self, new_row, new_col):
+        """
+        Evaluates a potential move position and returns a score.
+        Higher score = better move
+        """
+        score = 0
+        
+        # Factor 1: Distance to butter
+        butter_distance = self.distancia_manteiga[new_row][new_col]
+        if butter_distance is not None:
+            # Lower distance = higher score
+            score += (10 - butter_distance) * 2
+        
+        # Factor 2: Heat from toaster
+        heat_value = self.calor_torradeira[new_row][new_col]
+        if heat_value is not None:
+            # Higher heat = lower score
+            score -= heat_value * 3
+        
+        # Factor 3: Distance from mold
+        mold_distance = abs(new_row - self.bolor_pos['row']) + abs(new_col - self.bolor_pos['col'])
+        if mold_distance < 2:  # If mold is too close
+            score -= 20
+        else:
+            score += mold_distance
+            
+        # Factor 4: Avoid moving towards mold
+        if (new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']):
+            score -= 5
+        
+        # Bonus: Reaching butter position
+        if (new_row == self.manteiga_pos['row'] and new_col == self.manteiga_pos['col']):
+            score += 50
+            
+        # Penalty: Moving to toaster position
+        if (new_row == self.torradeira_pos['row'] and new_col == self.torradeira_pos['col']):
+            score -= 100
+        
+        return score
+
+    def play_game_autonomous(self):
+        """
+        Runs the game autonomously using the heuristic movement
+        """
+        moves_count = 0
+        max_moves = 100  # Prevent infinite loops
+        
+        while not self.game_over and moves_count < max_moves:
+            self.display()
+            time.sleep(2)  # Add delay to make movement visible
+            
+            # Get and execute best move
+            move = self.get_autonomous_move()
+            if self.move_robot(move):
+                self.move_bolor()
+                moves_count += 1
+        
+        self.display()
+        if self.won:
+            print("\nRobot wins!")
+        else:
+            print("\nGame Over! Mold wins!")
+        print(f"Total moves: {moves_count}")
+
     def check_game_state(self):
         # Verificar se o robot chegou à manteiga
         if self.robot_pos['row'] == self.manteiga_pos['row'] and \
@@ -428,4 +533,10 @@ def play_game():
         print("\nGame Over! O bolor venceu!")
 
 if __name__ == "__main__":
-    play_game()
+    game = GameBoard()
+    # mode = input("Choose mode (1 for manual, 2 for autonomous): ")
+    # if mode == "1":
+    #     play_game()
+    # else:
+        #game.play_game_autonomous()
+    game.play_game_autonomous()
