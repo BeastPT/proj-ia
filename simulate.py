@@ -322,24 +322,33 @@ class GameBoard:
             return True
         return False
 
+    def simulate_move_bolor(self, robot_row, robot_col):
+        if self.game_over:
+            return
+
+        new_row, new_col = self.bolor_pos['row'], self.bolor_pos['col']
+
+        if robot_row < new_row: # Vai andar para cima
+            new_row -= 1
+        elif robot_row > new_row: # Vai andar para baixo
+            new_row += 1
+        elif robot_row == new_row: # Vai andar para a esquerda/direita
+            if robot_row < new_col:
+                new_col -= 1
+            elif robot_row > new_col:
+                new_col += 1
+        
+        return new_row, new_col
+
+
     def move_bolor(self):
         if self.game_over:
             return
 
-        if self.robot_pos['row'] < self.bolor_pos['row']: # Vai andar para cima
-            self.bolor_pos['row'] -= 1
-        elif self.robot_pos['row'] > self.bolor_pos['row']: # Vai andar para baixo
-            self.bolor_pos['row'] += 1
-        elif self.robot_pos['row'] == self.bolor_pos['row']: # Vai andar para a esquerda/direita
-            if self.robot_pos['row'] < self.bolor_pos['col']:
-                self.bolor_pos['col'] -= 1
-            elif self.robot_pos['row'] > self.bolor_pos['col']:
-                self.bolor_pos['col'] += 1
+        self.bolor_pos['row'], self.bolor_pos['col'] = simulate_move_bolor(self.robot_pos['row'], self.robot_pos['col'])
 
         # Verificar vitória/derrota
         self.check_game_state()
-
-
 
 
 
@@ -386,7 +395,8 @@ class GameBoard:
         Higher score = better move
         """
         score = 0
-        
+
+
         # Factor 1: Distance to butter
         butter_distance = self.distancia_manteiga[new_row][new_col]
         if butter_distance is not None:
@@ -399,12 +409,16 @@ class GameBoard:
             # Higher heat = lower score
             score -= heat_value * 3
         
+        bolor_row, bolor_col = simulate_move_bolor(new_row, new_col)
+        # ver se a posição do bolor é igual à posição do robot/manteiga/torradeira e atribuir scores
+
+
         # Factor 3: Distance from mold
-        mold_distance = abs(new_row - self.bolor_pos['row']) + abs(new_col - self.bolor_pos['col'])
-        if mold_distance < 2:  # If mold is too close
-            score -= 20
-        else:
-            score += mold_distance
+        # mold_distance = abs(new_row - self.bolor_pos['row']) + abs(new_col - self.bolor_pos['col'])
+        # if mold_distance < 2:  # If mold is too close
+        #     score -= 20
+        # else:
+        #     score += mold_distance
             
         # Factor 4: Avoid moving towards mold
         if (new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']):
