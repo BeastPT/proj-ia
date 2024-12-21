@@ -409,7 +409,7 @@ class GameBoard:
             # Higher heat = lower score
             score -= heat_value * 3
         
-        bolor_row, bolor_col = simulate_move_bolor(new_row, new_col)
+        bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
         # ver se a posição do bolor é igual à posição do robot/manteiga/torradeira e atribuir scores
 
 
