@@ -238,8 +238,8 @@ class GameBoard:
                 self.torradeira_pos = {'row': row, 'col': col}
                 break
             
-        #self.manteiga_pos = {'row': 2, 'col': 3}        
-        #self.torradeira_pos = {'row': 4, 'col': 3}
+        # self.manteiga_pos = {'row': 1, 'col': 4}        
+        # self.torradeira_pos = {'row': 0, 'col': 1}
 
 
         # Inicializar as barreiras
@@ -500,7 +500,7 @@ class GameBoard:
             if strat:
                 self.manteiga_strat = False
                 print("Mudar estratégia-------------")
-                time.sleep(2)
+                time.sleep(1)
 
             # Descobrir barreiras na nova posição
             if self.discover_barriers(new_row, new_col):
@@ -513,11 +513,12 @@ class GameBoard:
             return True
         return False
 
-    def simulate_move_bolor(self, robot_row, robot_col):
+    def simulate_move_bolor(self, robot_row, robot_col, new_row=None, new_col=None):
         if self.game_over:
             return
 
-        new_row, new_col = self.bolor_pos['row'], self.bolor_pos['col']
+        if new_row is None or new_col is None:
+            new_row, new_col = self.bolor_pos['row'], self.bolor_pos['col']
 
         if robot_row < new_row: # Vai andar para cima
             new_row -= 1
@@ -572,7 +573,7 @@ class GameBoard:
             # Calculate score for this move
             score, change_strat = self._evaluate_move(new_row, new_col)
             possible_moves.append((move, score, change_strat))
-        
+        time.sleep(3)
         # If no valid moves, return random move
         if not possible_moves:
             return random.choice(['w', 'a', 's', 'd'])
@@ -645,9 +646,13 @@ class GameBoard:
             if self.known_manteiga:  # Certifique-se de que a posição da manteiga está definida
                 if bolor_row == self.known_manteiga['row'] and bolor_col == self.known_manteiga['col']: # Se o bolor ganhar nesta jogada tirar score
                     score -= 1500
-            #else ELE VAI SEMPRE SABER ONDE TA A MANTEIGA PARA MUDAR DE STRATEGY
+
             if self.known_torradeira:
                 print(f"Known toaster: ({self.known_torradeira['row']}, {self.known_torradeira['col']})")
+                if new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']: # Se o robot cair dentro da torradeira oq acontece:
+                    bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col, bolor_row, bolor_col)
+
+
                 if bolor_row == self.known_torradeira['row'] and bolor_col == self.known_torradeira['col']:
                     score += 1500
                 else:
@@ -659,16 +664,16 @@ class GameBoard:
                         score -= 15
 
             if bolor_row == new_row and bolor_col == new_col:
-                score -= 1500
+                score -= 2000
 
         for i in range(len(self.last_positions)):
             if (new_row, new_col) == self.last_positions[i]:
-                score -= 10*i
+                score -= 5*i
                 break
 
 
         print(f"Score: {score}")
-        time.sleep(3)
+        time.sleep(0.5)
         return score, change_start
 
     def play_game_autonomous(self):
