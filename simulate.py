@@ -24,7 +24,7 @@ def filter_table(table1, table2):
     """
     for row in range(len(table1)):
         for col in range(len(table1[0])):
-            if table1[row][col] != table2[row][col]:
+            if table1[row][col] != table2[row][col] and table1[row][col] != float('inf'):
                 table1[row][col] = None
 
 def filter_table_min(table1, table2):
@@ -35,7 +35,13 @@ def filter_table_min(table1, table2):
         for col in range(len(table1[0])):
             if table1[row][col] > table2[row][col]:
                 table1[row][col] = table2[row][col]     
-
+def count_zeros(table):
+    count = 0
+    for row in range(len(table)):
+        for col in range(len(table[0])):
+            if table[row][col] == 0:
+                count += 1
+    return count
 
 def populate_tabela(table):
     aux_tables = []
@@ -122,6 +128,65 @@ def print_table(table, table_name):
         print()  # Nova linha no final de cada row
     print()  # Linha extra no final da tabela
 
+# def populate_torradeira(table, row, col, inf=False):
+#     if inf:
+#         table[row][col] = float('inf')
+#         if 0 <= row - 1 < len(table) and table[row - 1][col] == 0:
+#             table[row - 1][col] = float('inf')
+#         if 0 <= row + 1 < len(table) and table[row + 1][col] == 0:
+#             table[row + 1][col] = float('inf')
+#         if 0 <= col - 1 < len(table[0]) and table[row][col - 1] == 0:
+#             table[row][col - 1] = float('inf')
+#         if 0 <= col + 1 < len(table[0]) and table[row][col + 1] == 0:
+#             table[row][col + 1] = float('inf')
+#     else:
+#         table[row][col] = 1
+#         if 0 <= row - 1 < len(table) and table[row - 1][col] is None:
+#             table[row - 1][col] = 0
+#         if 0 <= row + 1 < len(table) and table[row + 1][col] is None:
+#             table[row + 1][col] = 0
+#         if 0 <= col - 1 < len(table[0]) and table[row][col - 1] is None:
+#             table[row][col - 1] = 0
+#         if 0 <= col + 1 < len(table[0]) and table[row][col + 1] is None:
+#             table[row][col + 1] = 0
+
+def populate_torradeira(table, row, col, inf=False):
+    """
+    Enhanced population of heat matrix that better tracks possible toaster locations
+    Args:
+        table: The heat matrix
+        row, col: Current robot position
+        inf: Whether to mark impossible locations
+    """
+    if inf:
+        # Mark current position and adjacents as impossible toaster locations
+        table[row][col] = float('inf')
+        
+        # Only mark adjacent positions as impossible if they haven't been confirmed as hot
+        adjacent_positions = [
+            (row - 1, col), (row + 1, col),
+            (row, col - 1), (row, col + 1)
+        ]
+        
+        for adj_row, adj_col in adjacent_positions:
+            if 0 <= adj_row < len(table) and 0 <= adj_col < len(table[0]):
+                if table[adj_row][adj_col] == 0:  # Only if it's marked as possible
+                    table[adj_row][adj_col] = float('inf')
+    else:
+        # We found a hot spot
+        table[row][col] = 1
+        
+        # Mark adjacent positions as potential toaster locations
+        adjacent_positions = [
+            (row - 1, col), (row + 1, col),
+            (row, col - 1), (row, col + 1)
+        ]
+        
+        for adj_row, adj_col in adjacent_positions:
+            if 0 <= adj_row < len(table) and 0 <= adj_col < len(table[0]):
+                if table[adj_row][adj_col] is None:
+                    table[adj_row][adj_col] = 0  # Potential toaster location
+
 
 
 class GameBoard:
@@ -144,7 +209,7 @@ class GameBoard:
         
         self.last_positions = []
 
-
+        self.manteiga_strat = True
         # Estrutura para armazenar barreiras
         # Agora armazenamos as barreiras como pares de posições que não podem ser atravessadas
         self.barriers = set()  # Conjunto de tuplas ((row1, col1), (row2, col2))
@@ -164,7 +229,6 @@ class GameBoard:
             if (row, col) != (0, 0) and (row, col) != (5, 5):
                 self.manteiga_pos = {'row': row, 'col': col}
                 break
-
         # Posicionar torradeira aleatoriamente
         while True:
             row = random.randint(0, self.size-1)
@@ -173,6 +237,10 @@ class GameBoard:
                (row, col) != (self.manteiga_pos['row'], self.manteiga_pos['col']):
                 self.torradeira_pos = {'row': row, 'col': col}
                 break
+            
+        #self.manteiga_pos = {'row': 2, 'col': 3}        
+        #self.torradeira_pos = {'row': 4, 'col': 3}
+
 
         # Inicializar as barreiras
         self.setup_barriers()
@@ -227,8 +295,82 @@ class GameBoard:
                 discovered = True
         
         return discovered
+    
+    def find_toaster_position(self):
+        """
+        Advanced method to find toaster position based on heat patterns
+        Returns: Dictionary with row and col if found, None otherwise
+        """
+        # If we already found the toaster
+        if hasattr(self, 'known_torradeira') and self.known_torradeira:
+            return self.known_torradeira
 
+        # Count cells marked as possible toaster locations (0s)
+        zero_count = sum(1 for row in self.calor_torradeira 
+                        for cell in row if cell == 0)
 
+        # If only one possible location remains
+        if zero_count == 1:
+            for row in range(len(self.calor_torradeira)):
+                for col in range(len(self.calor_torradeira[0])):
+                    if self.calor_torradeira[row][col] == 0:
+                        self.known_torradeira = {'row': row, 'col': col}
+                        return self.known_torradeira
+
+        # If we found multiple hot spots, try to triangulate
+        hot_spots = []
+        for row in range(len(self.calor_torradeira)):
+            for col in range(len(self.calor_torradeira[0])):
+                if self.calor_torradeira[row][col] == 1:
+                    hot_spots.append((row, col))
+
+        if len(hot_spots) >= 2:
+            # Find intersection of possible toaster locations from multiple hot spots
+            possible_locations = set()
+            for hot_row, hot_col in hot_spots:
+                current_possible = set()
+                # Add adjacent positions
+                adjacent_positions = [
+                    (hot_row - 1, hot_col), (hot_row + 1, hot_col),
+                    (hot_row, hot_col - 1), (hot_row, hot_col + 1)
+                ]
+                for adj_row, adj_col in adjacent_positions:
+                    if (0 <= adj_row < len(self.calor_torradeira) and 
+                        0 <= adj_col < len(self.calor_torradeira[0]) and
+                        self.calor_torradeira[adj_row][adj_col] == 0):
+                        current_possible.add((adj_row, adj_col))
+                
+                if not possible_locations:
+                    possible_locations = current_possible
+                else:
+                    possible_locations &= current_possible
+
+            # If we found exactly one intersection point
+            if len(possible_locations) == 1:
+                row, col = possible_locations.pop()
+                self.known_torradeira = {'row': row, 'col': col}
+                return self.known_torradeira
+
+        return None
+    def update_toaster_knowledge(self):
+        """
+        Main method to update toaster knowledge after each move
+        """
+        dist_torradeira = abs(self.robot_pos['row'] - self.torradeira_pos['row']) + \
+                        abs(self.robot_pos['col'] - self.torradeira_pos['col'])
+        
+        # Update heat matrix based on current position
+        if dist_torradeira <= 1:
+            populate_torradeira(self.calor_torradeira, self.robot_pos['row'], self.robot_pos['col'])
+        else:
+            populate_torradeira(self.calor_torradeira, self.robot_pos['row'], self.robot_pos['col'], True)
+        
+        # Try to find toaster position
+        toaster_pos = self.find_toaster_position()
+        
+        if toaster_pos:
+            print(f"\nToaster found at position: ({toaster_pos['row']}, {toaster_pos['col']})")
+            
     def update_matrices(self):
         aux = [[None] * 6 for _ in range(6)]
 
@@ -241,23 +383,14 @@ class GameBoard:
                 self.distancia_manteiga, possible_zeros_manteiga = populate_tabela(self.distancia_manteiga)
                 if possible_zeros_manteiga == 1:
                     krow, kcol = get_zero(self.distancia_manteiga)
-                    known_manteiga = {'row': krow, 'col': kcol}
+                    self.known_manteiga = {'row': krow, 'col': kcol}
             else:
                 disperse_table(self.distancia_manteiga, dist_manteiga, self.robot_pos['row'], self.robot_pos['col'])
-        # Atualizar matriz de calor da torradeira
         
-        dist_torradeira = abs(self.robot_pos['row'] - self.torradeira_pos['row']) + abs(self.robot_pos['col'] - self.torradeira_pos['col'])
-        if dist_torradeira <= 1:
-            if has_numbers(self.calor_torradeira):
-                disperse_table(aux, dist_torradeira, self.robot_pos['row'], self.robot_pos['col'])
-                filter_table(self.calor_torradeira, aux)
-                self.calor_torradeira, possible_zeros_torradeira = populate_tabela(self.calor_torradeira)
-                if possible_zeros_torradeira == 1:
-                    krow, kcol = get_zero(self.calor_torradeira)
-                    known_torradeira = {'row': krow, 'col': kcol}
-            else:
-                disperse_table(self.calor_torradeira, dist_torradeira, self.robot_pos['row'], self.robot_pos['col'])
-    
+        # Atualizar matriz de calor da torradeira
+        self.update_toaster_knowledge()
+
+
     def print_matrices(self):
         print_table(self.distancia_manteiga, "Distância da Manteiga")
         print_table(self.calor_torradeira, "Calor da Torradeira")
@@ -332,7 +465,7 @@ class GameBoard:
 
 
 
-    def move_robot(self, direction):
+    def move_robot(self, direction, strat):
         if self.game_over:
             return False
 
@@ -357,11 +490,17 @@ class GameBoard:
 
             # Verificar se está na torradeira
             if new_row == self.torradeira_pos['row'] and new_col == self.torradeira_pos['col']:
-                self.game_over = True
-                return True
+                self.skip = True
 
             self.robot_pos['row'] = new_row
             self.robot_pos['col'] = new_col
+
+            self.last_positions.append((new_row, new_col))
+
+            if strat:
+                self.manteiga_strat = False
+                print("Mudar estratégia-------------")
+                time.sleep(2)
 
             # Descobrir barreiras na nova posição
             if self.discover_barriers(new_row, new_col):
@@ -385,9 +524,9 @@ class GameBoard:
         elif robot_row > new_row: # Vai andar para baixo
             new_row += 1
         elif robot_row == new_row: # Vai andar para a esquerda/direita
-            if robot_row < new_col:
+            if robot_col < new_col:
                 new_col -= 1
-            elif robot_row > new_col:
+            elif robot_col > new_col:
                 new_col += 1
         
         return new_row, new_col
@@ -431,15 +570,16 @@ class GameBoard:
                 continue
                 
             # Calculate score for this move
-            score = self._evaluate_move(new_row, new_col)
-            possible_moves.append((move, score))
+            score, change_strat = self._evaluate_move(new_row, new_col)
+            possible_moves.append((move, score, change_strat))
         
         # If no valid moves, return random move
         if not possible_moves:
             return random.choice(['w', 'a', 's', 'd'])
         
         # Return move with highest score
-        return max(possible_moves, key=lambda x: x[1])[0]
+        val = max(possible_moves, key=lambda x: x[1])
+        return val[0], val[2]
 
     def _evaluate_move(self, new_row, new_col):
         """
@@ -448,74 +588,88 @@ class GameBoard:
         """
         score = 0
         print(f"New position: ({new_row}, {new_col})")
-        if not (0 <= new_row < self.size and 0 <= new_col < self.size):
+        if (0 > new_row > self.size and 0 > new_col > self.size):
             print("Fora dos limites")
             return -float('inf')  # Penalidade alta para movimentos fora dos limites
+        change_start = False
+        if self.manteiga_strat:
+            # Factor 1: Distância para a manteiga
+            bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
 
-        # Factor 1: Distância para a manteiga
-        if self.known_manteiga:  # Certifique-se de que a posição da manteiga está definida
-            print(f"Known butter: ({self.known_manteiga['row']}, {self.known_manteiga['col']})")
-            butter_distance = abs(new_row - self.known_manteiga['row']) + abs(new_col - self.known_manteiga['col'])
-            bolor_to_butter = abs(self.bolor_pos['row'] - self.known_manteiga['row']) + abs(self.bolor_pos['col'] - self.known_manteiga['col'])
+            if self.known_manteiga:  # Certifique-se de que a posição da manteiga está definida
+                print(f"Known butter: ({self.known_manteiga['row']}, {self.known_manteiga['col']})")
+                butter_distance = abs(new_row - self.known_manteiga['row']) + abs(new_col - self.known_manteiga['col'])
+                bolor_to_butter = abs(bolor_row - self.known_manteiga['row']) + abs(bolor_col - self.known_manteiga['col'])
 
-            # Se o robô está mais perto ou à mesma distância da manteiga que o bolor
-            if butter_distance <= bolor_to_butter:
-                score += (10 - butter_distance) * 4  # Priorizamos ir até a manteiga
+                # Se o robô está mais perto ou à mesma distância da manteiga que o bolor
+                print(f"Distance to butter: {butter_distance}")
+                print(f"Distance bolor to butter: {bolor_to_butter}")
+                if butter_distance <= bolor_to_butter:
+                    score += (10 - butter_distance) * 10  # Priorizamos ir até a manteiga
+                else:
+                    # MUDAR A ESTRATEGIA, É IMPOSSIVEL CHEGAR A MANTEIGA ANTES DO BOLOR
+                    change_start = True
+                    print("------------VAI MUDAR SE ESCOLHER------------")
+                    score -= 35
             else:
-                # MUDAR A ESTRATEGIA, É IMPOSSIVEL CHEGAR A MANTEIGA ANTES DO BOLOR
-                score -= 35
-        else:
-            # Procurar o zero mais perto da posicao antiga do robot
-            nrow, ncol, distance = find_nearest_zero(self.distancia_manteiga, self.robot_pos['row'], self.robot_pos['col'])
-            crow, ccol, cdistance = find_nearest_zero(self.distancia_manteiga, new_row, new_col)
-            print(f"Nearest zero Previous: ({nrow}, {ncol}) - Distance: {distance}")
-            print(f"Nearest zero New: ({crow}, {ccol}) - Distance: {cdistance}")
-            if cdistance < distance:
-                score += 100
-
-        # Factor 2: Calor da torradeira
-        if self.calor_torradeira and 0 <= new_row < len(self.calor_torradeira) and 0 <= new_col < len(self.calor_torradeira[0]):
-            heat_value = self.calor_torradeira[new_row][new_col] if self.calor_torradeira[new_row][new_col] is not None else 0
-        else:
-            heat_value = 0
-        score -= heat_value * 3
-        
-        # Factor 3: Simular movimento do bolor e avaliar risco
-        bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
-
-        # Penalizar se o bolor puder alcançar a posição simulada
-        if new_row == bolor_row and new_col == bolor_col:
-            score -= 100
-
-        # Penalizar se ficar na mesma linha/coluna que o bolor
-        if new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']:
-            score -= 15
-
-        # Se estamos em loop, adicionar componente aleatório para quebrar padrão
-        if len(self.last_positions) >= 4:
-            if (new_row, new_col) in self.last_positions[-4:]:
-                score += random.randint(-20, 20)  # Componente aleatório para quebrar loops
+                # Procurar o zero mais perto da posicao antiga do robot
+                nrow, ncol, distance = find_nearest_zero(self.distancia_manteiga, self.robot_pos['row'], self.robot_pos['col'])
+                crow, ccol, cdistance = find_nearest_zero(self.distancia_manteiga, new_row, new_col)
+                print(f"Nearest zero Previous: ({nrow}, {ncol}) - Distance: {distance}")
+                print(f"Nearest zero New: ({crow}, {ccol}) - Distance: {cdistance}")
+                if cdistance < distance:
+                    score += 100
+            
+            # Factor 3: Simular movimento do bolor e avaliar risco
             
 
-        # Armazenar a posição atual
-        self.last_positions.append((new_row, new_col))
-        if len(self.last_positions) > 6:  # Manter apenas as últimas 6 posições
-            self.last_positions.pop(0)
-
-        # Bonus: Alcançar a manteiga
-        if self.known_manteiga:
-            if new_row == self.known_manteiga['row'] and new_col == self.known_manteiga['col']:
-                score += 100
-
-        # Penalidade: Mover para a torradeira
-        if self.known_torradeira:
-            if new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']:
+            # Penalizar se o bolor puder alcançar a posição simulada
+            if new_row == bolor_row and new_col == bolor_col:
                 score -= 100
+
+            # Penalizar se ficar na mesma linha/coluna que o bolor
+            if new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']:
+                score -= 15
+
+            # Bonus: Alcançar a manteiga
+            if self.known_manteiga:
+                if new_row == self.known_manteiga['row'] and new_col == self.known_manteiga['col']:
+                    score += 1000
+
+            # Penalidade: Mover para a torradeira
+            if self.known_torradeira:
+                if new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']:
+                    score -= 100
+        else:
+            bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
+            if self.known_manteiga:  # Certifique-se de que a posição da manteiga está definida
+                if bolor_row == self.known_manteiga['row'] and bolor_col == self.known_manteiga['col']: # Se o bolor ganhar nesta jogada tirar score
+                    score -= 1500
+            #else ELE VAI SEMPRE SABER ONDE TA A MANTEIGA PARA MUDAR DE STRATEGY
+            if self.known_torradeira:
+                print(f"Known toaster: ({self.known_torradeira['row']}, {self.known_torradeira['col']})")
+                if bolor_row == self.known_torradeira['row'] and bolor_col == self.known_torradeira['col']:
+                    score += 1500
+                else:
+                    distance_bolor_torradeira = abs(self.bolor_pos['row'] - self.known_torradeira['row']) + abs(self.bolor_pos['col'] - self.known_torradeira['col'])
+                    new_distance_bolor_torradeira = abs(bolor_row - self.known_torradeira['row']) + abs(bolor_col - self.known_torradeira['col'])
+                    if new_distance_bolor_torradeira < distance_bolor_torradeira:
+                        score += 50*(distance_bolor_torradeira - new_distance_bolor_torradeira)
+                    else:
+                        score -= 15
+
+            if bolor_row == new_row and bolor_col == new_col:
+                score -= 1500
+
+        for i in range(len(self.last_positions)):
+            if (new_row, new_col) == self.last_positions[i]:
+                score -= 10*i
+                break
 
 
         print(f"Score: {score}")
-        time.sleep(1)
-        return score
+        time.sleep(3)
+        return score, change_start
 
     def play_game_autonomous(self):
         """
@@ -526,7 +680,7 @@ class GameBoard:
         
         while not self.game_over and moves_count < max_moves:
             self.display()
-            time.sleep(2)  # Add delay to make movement visible
+            time.sleep(1)  # Add delay to make movement visible
             
             # Get and execute best move
             if self.skip:
@@ -535,8 +689,8 @@ class GameBoard:
                 self.move_bolor()
                 continue
 
-            move = self.get_autonomous_move()
-            if self.move_robot(move):
+            move, strat = self.get_autonomous_move()
+            if self.move_robot(move, strat):
                 self.move_bolor()
                 moves_count += 1
         
@@ -555,10 +709,10 @@ class GameBoard:
             self.won = True
             return
 
-        if self.robot_pos['row'] == self.torradeira_pos['row'] and \
-           self.robot_pos['col'] == self.torradeira_pos['col']:
-            # tem de dar skip na sua jogada
-            self.skip = True
+        # if self.robot_pos['row'] == self.torradeira_pos['row'] and \
+        #    self.robot_pos['col'] == self.torradeira_pos['col']:
+        #     # tem de dar skip na sua jogada
+        #     self.skip = True
 
         # Verificar se o bolor chegou à manteiga ou ao robot
         if (self.bolor_pos['row'] == self.manteiga_pos['row'] and \
@@ -637,6 +791,18 @@ def play_game():
     game.display()
     if game.won:
         print("\nParabéns! O ganhaste!")
+        print(f"Total de movimentos: {len(game.last_positions)}")
+        if game.known_manteiga:
+            print(f"O robot sabe onde está a manteiga: ({game.known_manteiga['row']}, {game.known_manteiga['col']})")
+        else:
+            print("O robot não sabe onde está a manteiga.")
+
+        #Mostra se sabe da torradeira
+        if game.known_torradeira:
+            print(f"O robot sabe onde está a torradeira: ({game.known_torradeira['row']}, {game.known_torradeira['col']})")
+        else:
+            print("O robot não sabe onde está a torradeira.")
+
     else:
         print("\nGame Over! O bolor venceu!")
 
