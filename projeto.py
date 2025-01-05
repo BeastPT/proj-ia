@@ -569,10 +569,7 @@ def realizar_jogada():
         print_all_tables(distancia_manteiga, calor_torradeira)
 
         # Movimente o bolor
-        mover_bolor()
-
-        # Verifique as condições de fim de jogo
-        verificar_fim_de_jogo()
+        andar_bolor()
 
     else:
         print("Nenhum movimento válido encontrado!")
