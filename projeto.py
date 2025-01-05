@@ -442,18 +442,142 @@ def check_pause_and_wait(TEMPO_ENTRE_JOGADA):
             ev3.screen.print("SAIU DE ESPERA")
         wait(100)
 
+def _evaluate_move(new_row, new_col):
+    """
+    Avalia a qualidade de um movimento.
+    - Baseia-se na proximidade à manteiga e nos riscos de bolor, torradeira ou barreiras.
+    """
+    score = 0
+
+    # Penalidade para movimentos fora dos limites do tabuleiro
+    if not (0 <= new_row < 6 and 0 <= new_col < 6):
+        return -float('inf')  # Penalidade alta
+
+    # Fator 1: Distância ao objetivo (manteiga)
+    if distancia_manteiga[new_row][new_col] is not None:
+        manteiga_distance = distancia_manteiga[new_row][new_col]
+        score += (10 - manteiga_distance) * 10  # Quanto mais perto, maior o score
+
+    # Fator 2: Evitar bolor
+    bolor_distance = abs(new_row - position_bolor["row"]) + abs(new_col - position_bolor["col"])
+    if bolor_distance <= 1:  # Penalidade alta se estiver próximo ao bolor
+        score -= 100
+
+    # Fator 3: Evitar torradeira
+    if calor_torradeira[new_row][new_col] is not None and calor_torradeira[new_row][new_col] == 0:
+        score -= 100  # Penalidade alta se entrar em uma torradeira
+
+    # Fator 4: Evitar barreiras
+    if ambient["barreira"] == color_sensor.color():
+        score -= 50  # Penalidade para barreiras
+
+    return score
+
+
+
+def get_autonomous_move():
+    """
+    Determina o melhor movimento baseado em heurísticas.
+    Retorna: ('row_delta', 'col_delta') para a direção do movimento.
+    """
+    directions = [
+        (0, -1),  # Esquerda
+        (0, 1),   # Direita
+        (-1, 0),  # Cima
+        (1, 0)    # Baixo
+    ]
+    best_move = None
+    best_score = -float('inf')
+
+    # Avalia cada direção possível
+    for row_delta, col_delta in directions:
+        new_row = robot_row + row_delta
+        new_col = robot_col + col_delta
+        score = _evaluate_move(new_row, new_col)
+
+        if score > best_score:
+            best_score = score
+            best_move = (row_delta, col_delta)
+
+    return best_move
+
+def atualizar_matrizes():
+    """
+    Atualiza as matrizes de distância da manteiga e calor da torradeira
+    com base na posição do robô, bolor e manteiga.
+    """
+    global distancia_manteiga, calor_torradeira
+
+    # Atualiza a distância à manteiga
+    for row in range(6):
+        for col in range(6):
+            distancia_manteiga[row][col] = abs(row - robot_row) + abs(col - robot_col)
+
+    # Atualiza o calor da torradeira
+    for row in range(6):
+        for col in range(6):
+            calor_torradeira[row][col] = abs(row - position_bolor["row"]) + abs(col - position_bolor["col"])
+
+
+def determinar_estrategia():
+    """
+    Determina a estratégia com base nas posições do bolor e da manteiga.
+    Retorna "EVITAR_BOLOR" ou "ALCANCAR_MANTEIGA".
+    """
+    manteiga_distance_robot = abs(robot_row - position_bolor["row"]) + abs(robot_col - position_bolor["col"])
+    manteiga_distance_bolor = abs(position_bolor["row"] - robot_row) + abs(position_bolor["col"] - robot_col)
+
+    if manteiga_distance_bolor < manteiga_distance_robot:
+        return "EVITAR_BOLOR"
+    return "ALCANCAR_MANTEIGA"
+
 
 def realizar_jogada():
-    get_all_objects()
-    verify_objects()
-    row, col, distance = find_nearest_zero_oriented(distancia_manteiga, robot_row, robot_col)
-    if distance:
-        print(row, col, distance)
-    # zeros, distance = find_nearest_zeros(distancia_manteiga, robot_row, robot_col)
-    # if distance:
-    #     print(zeros)
-    andar_casa()
-    print_all_tables(distancia_manteiga, calor_torradeira)
+    global robot_row, robot_col
+
+    # Atualize as matrizes de inteligência
+    atualizar_matrizes()
+
+    # Obtenha o próximo movimento
+    move = get_autonomous_move()
+    if move:
+        row_delta, col_delta = move
+        new_row = robot_row + row_delta
+        new_col = robot_col + col_delta
+
+        # Movimente o robô de acordo com a decisão
+        if row_delta == -1:
+            forward(100)  # Cima
+        elif row_delta == 1:
+            backward(100)  # Baixo
+        elif col_delta == -1:
+            turn_left()
+            forward(100)  # Esquerda
+        elif col_delta == 1:
+            turn_right()
+            forward(100)  # Direita
+
+        # Atualize a posição do robô
+        robot_row = new_row
+        robot_col = new_col
+
+        # Verifique os objetos após o movimento
+        verify_objects()
+
+        # Atualize as tabelas e exiba os dados
+        get_all_objects()
+        print_all_tables(distancia_manteiga, calor_torradeira)
+
+        # Movimente o bolor
+        mover_bolor()
+
+        # Verifique as condições de fim de jogo
+        verificar_fim_de_jogo()
+
+    else:
+        print("Nenhum movimento válido encontrado!")
+
+    # Aguarde antes da próxima jogada
     check_pause_and_wait(TEMPO_ENTRE_JOGADA)
 
 
