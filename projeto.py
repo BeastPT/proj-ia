@@ -14,7 +14,6 @@ ev3 = EV3Brick()
 color_sensor = ColorSensor(Port.S2)
 touch_sensorLeft = TouchSensor(Port.S3)
 touch_sensorRight = TouchSensor(Port.S4)
-#distance_sensor = UltrasonicSensor(Port.S1)
 left_motor = Motor(Port.D)
 right_motor = Motor(Port.A)
 
@@ -39,9 +38,9 @@ ambient = {
 
 
 color_weights = {
-    Color.YELLOW: 8,
-    Color.BROWN: 4,
-    Color.GREEN: 2,
+    Color.YELLOW: 8, #Castanho
+    Color.BROWN: 4, #Amarelo
+    Color.GREEN: 2, 
     Color.BLUE: 1,
     Color.BLACK: 0
 }
@@ -380,6 +379,11 @@ def verify_objects():
         ev3.screen.clear()
         ev3.screen.draw_text(10, 10, "CAISTE NA TORRADEIRA")
         wait(10000) 
+        
+    if verify_bolor():
+        ev3.screen.clear()
+        ev3.screen.draw_text(10, 10, "GAME OVER")  
+        exit()  
 
 
 
