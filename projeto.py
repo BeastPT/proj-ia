@@ -85,7 +85,7 @@ def print_table(table, table_name):
         print()  # Nova linha no final de cada row
     print()  # Linha extra no final da tabela
 
-def print_all_tables(dist_manteiga, calor_torrad, cheiro_bol):
+def print_all_tables(dist_manteiga, calor_torrad):
     """
     Imprime todas as tabelas em sequência
     """
