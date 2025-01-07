@@ -200,6 +200,9 @@ class GameBoard:
         self.game_over = False
         self.won = False
         self.skip = False
+        self.has_butter = False
+        self.need_return_home = False
+        self.home_pos = {'row': 0, 'col': 0}
         
         # Matrizes de distância e calor
         self.distancia_manteiga = [[None] * self.size for _ in range(self.size)]
@@ -374,18 +377,20 @@ class GameBoard:
     def update_matrices(self):
         aux = [[None] * 6 for _ in range(6)]
 
-        # Atualizar matriz de distância da manteiga
-        dist_manteiga = abs(self.robot_pos['row'] - self.manteiga_pos['row']) + abs(self.robot_pos['col'] - self.manteiga_pos['col'])
-        if dist_manteiga:
-            if has_numbers(self.distancia_manteiga):
-                disperse_table(aux, dist_manteiga, self.robot_pos['row'], self.robot_pos['col'])
-                filter_table(self.distancia_manteiga, aux)
-                self.distancia_manteiga, possible_zeros_manteiga = populate_tabela(self.distancia_manteiga)
-                if possible_zeros_manteiga == 1:
-                    krow, kcol = get_zero(self.distancia_manteiga)
-                    self.known_manteiga = {'row': krow, 'col': kcol}
-            else:
-                disperse_table(self.distancia_manteiga, dist_manteiga, self.robot_pos['row'], self.robot_pos['col'])
+        # Atualizar matriz de distância da manteiga apenas se ainda não foi pega
+        if self.manteiga_pos is not None and not self.has_butter:
+            dist_manteiga = abs(self.robot_pos['row'] - self.manteiga_pos['row']) + \
+                        abs(self.robot_pos['col'] - self.manteiga_pos['col'])
+            if dist_manteiga:
+                if has_numbers(self.distancia_manteiga):
+                    disperse_table(aux, dist_manteiga, self.robot_pos['row'], self.robot_pos['col'])
+                    filter_table(self.distancia_manteiga, aux)
+                    self.distancia_manteiga, possible_zeros_manteiga = populate_tabela(self.distancia_manteiga)
+                    if possible_zeros_manteiga == 1:
+                        krow, kcol = get_zero(self.distancia_manteiga)
+                        self.known_manteiga = {'row': krow, 'col': kcol}
+                else:
+                    disperse_table(self.distancia_manteiga, dist_manteiga, self.robot_pos['row'], self.robot_pos['col'])
         
         # Atualizar matriz de calor da torradeira
         self.update_toaster_knowledge()
@@ -463,6 +468,43 @@ class GameBoard:
             return True
         return False
 
+    def get_autonomous_move(self):
+        """
+        Determines the best move for the robot based on:
+        - Distance to butter (manteiga)
+        - Heat from toaster (torradeira)
+        - Discovered barriers
+        - Mold (bolor) position
+        Returns: 'w', 'a', 's', or 'd'
+        """
+        possible_moves = []
+        current_row, current_col = self.robot_pos['row'], self.robot_pos['col']
+        directions = [('w', -1, 0), ('s', 1, 0), ('a', 0, -1), ('d', 0, 1)]
+        
+        # Check each possible move
+        for move, row_delta, col_delta in directions:
+            new_row = current_row + row_delta
+            new_col = current_col + col_delta
+            
+            # Skip if move is invalid
+            if not (0 <= new_row < self.size and 0 <= new_col < self.size):
+                continue
+                
+            # Skip if there's a discovered barrier
+            if not self.can_move((current_row, current_col), (new_row, new_col)):
+                continue
+                
+            # Calculate score for this move
+            score, change_strat = self._evaluate_move(new_row, new_col)
+            possible_moves.append((move, score, change_strat))
+        time.sleep(1)
+        # If no valid moves, return random move
+        if not possible_moves:
+            return random.choice(['w', 'a', 's', 'd'])
+        
+        # Return move with highest score
+        val = max(possible_moves, key=lambda x: x[1])
+        return val[0], val[2]
 
 
     def move_robot(self, direction, strat):
@@ -515,21 +557,21 @@ class GameBoard:
 
     def simulate_move_bolor(self, robot_row, robot_col, new_row=None, new_col=None):
         if self.game_over:
-            return
+            return None, None
 
         if new_row is None or new_col is None:
             new_row, new_col = self.bolor_pos['row'], self.bolor_pos['col']
 
-        if robot_row < new_row: # Vai andar para cima
+        if robot_row < new_row:  # Vai andar para cima
             new_row -= 1
-        elif robot_row > new_row: # Vai andar para baixo
+        elif robot_row > new_row:  # Vai andar para baixo
             new_row += 1
-        elif robot_row == new_row: # Vai andar para a esquerda/direita
+        elif robot_row == new_row:  # Vai andar para a esquerda/direita
             if robot_col < new_col:
                 new_col -= 1
             elif robot_col > new_col:
                 new_col += 1
-        
+            
         return new_row, new_col
 
 
@@ -544,137 +586,86 @@ class GameBoard:
 
 
 
-    def get_autonomous_move(self):
-        """
-        Determines the best move for the robot based on:
-        - Distance to butter (manteiga)
-        - Heat from toaster (torradeira)
-        - Discovered barriers
-        - Mold (bolor) position
-        Returns: 'w', 'a', 's', or 'd'
-        """
-        possible_moves = []
-        current_row, current_col = self.robot_pos['row'], self.robot_pos['col']
-        directions = [('w', -1, 0), ('s', 1, 0), ('a', 0, -1), ('d', 0, 1)]
-        
-        # Check each possible move
-        for move, row_delta, col_delta in directions:
-            new_row = current_row + row_delta
-            new_col = current_col + col_delta
-            
-            # Skip if move is invalid
-            if not (0 <= new_row < self.size and 0 <= new_col < self.size):
-                continue
-                
-            # Skip if there's a discovered barrier
-            if not self.can_move((current_row, current_col), (new_row, new_col)):
-                continue
-                
-            # Calculate score for this move
-            score, change_strat = self._evaluate_move(new_row, new_col)
-            possible_moves.append((move, score, change_strat))
-        time.sleep(3)
-        # If no valid moves, return random move
-        if not possible_moves:
-            return random.choice(['w', 'a', 's', 'd'])
-        
-        # Return move with highest score
-        val = max(possible_moves, key=lambda x: x[1])
-        return val[0], val[2]
-
     def _evaluate_move(self, new_row, new_col):
-        """
-        Evaluates a potential move position and returns a score.
-        Higher score = better move
-        """
         score = 0
         print(f"New position: ({new_row}, {new_col})")
+        
         if (0 > new_row > self.size and 0 > new_col > self.size):
             print("Fora dos limites")
-            return -float('inf')  # Penalidade alta para movimentos fora dos limites
+            return -float('inf'), False
+        
         change_start = False
-        if self.manteiga_strat:
-            # Factor 1: Distância para a manteiga
-            bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
-
-            if self.known_manteiga:  # Certifique-se de que a posição da manteiga está definida
-                print(f"Known butter: ({self.known_manteiga['row']}, {self.known_manteiga['col']})")
-                butter_distance = abs(new_row - self.known_manteiga['row']) + abs(new_col - self.known_manteiga['col'])
-                bolor_to_butter = abs(bolor_row - self.known_manteiga['row']) + abs(bolor_col - self.known_manteiga['col'])
-
-                # Se o robô está mais perto ou à mesma distância da manteiga que o bolor
-                print(f"Distance to butter: {butter_distance}")
-                print(f"Distance bolor to butter: {bolor_to_butter}")
-                if butter_distance <= bolor_to_butter:
-                    score += (10 - butter_distance) * 10  # Priorizamos ir até a manteiga
-                else:
-                    # MUDAR A ESTRATEGIA, É IMPOSSIVEL CHEGAR A MANTEIGA ANTES DO BOLOR
-                    change_start = True
-                    print("------------VAI MUDAR SE ESCOLHER------------")
-                    score -= 35
-            else:
-                # Procurar o zero mais perto da posicao antiga do robot
-                nrow, ncol, distance = find_nearest_zero(self.distancia_manteiga, self.robot_pos['row'], self.robot_pos['col'])
-                crow, ccol, cdistance = find_nearest_zero(self.distancia_manteiga, new_row, new_col)
-                print(f"Nearest zero Previous: ({nrow}, {ncol}) - Distance: {distance}")
-                print(f"Nearest zero New: ({crow}, {ccol}) - Distance: {cdistance}")
-                if cdistance < distance:
-                    score += 100
+        
+        # Simulate mold movement first
+        bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
+        
+        # If returning home
+        if self.need_return_home:
+            home_distance = abs(new_row - self.home_pos['row']) + abs(new_col - self.home_pos['col'])
+            score += (10 - home_distance) * 10
             
-            # Factor 3: Simular movimento do bolor e avaliar risco
-            
-
-            # Penalizar se o bolor puder alcançar a posição simulada
+            if new_row == self.home_pos['row'] and new_col == self.home_pos['col']:
+                score += 1000
+                
             if new_row == bolor_row and new_col == bolor_col:
-                score -= 100
-
-            # Penalizar se ficar na mesma linha/coluna que o bolor
+                score -= 2000
+                
             if new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']:
                 score -= 15
+                
+            return score, False
 
-            # Bonus: Alcançar a manteiga
+        # If using butter strategy and haven't got butter yet
+        elif self.manteiga_strat and not self.has_butter and self.manteiga_pos is not None:
             if self.known_manteiga:
-                if new_row == self.known_manteiga['row'] and new_col == self.known_manteiga['col']:
-                    score += 1000
+                butter_distance = abs(new_row - self.known_manteiga['row']) + abs(new_col - self.known_manteiga['col'])
+                bolor_to_butter = abs(bolor_row - self.known_manteiga['row']) + abs(bolor_col - self.known_manteiga['col'])
+                
+                print(f"Distance to butter: {butter_distance}")
+                print(f"Distance bolor to butter: {bolor_to_butter}")
+                
+                if butter_distance <= bolor_to_butter:
+                    score += (10 - butter_distance) * 10
+                else:
+                    change_start = True
+                    score -= 35
+            else:
+                # Look for nearest zero
+                nrow, ncol, distance = find_nearest_zero(self.distancia_manteiga, self.robot_pos['row'], self.robot_pos['col'])
+                if nrow is not None:
+                    crow, ccol, cdistance = find_nearest_zero(self.distancia_manteiga, new_row, new_col)
+                    if crow is not None:
+                        if cdistance < distance:
+                            score += 100
 
-            # Penalidade: Mover para a torradeira
+        # Using toaster strategy
+        else:
             if self.known_torradeira:
                 if new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']:
-                    score -= 100
-        else:
-            bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col)
-            if self.known_manteiga:  # Certifique-se de que a posição da manteiga está definida
-                if bolor_row == self.known_manteiga['row'] and bolor_col == self.known_manteiga['col']: # Se o bolor ganhar nesta jogada tirar score
-                    score -= 1500
-
-            if self.known_torradeira:
-                print(f"Known toaster: ({self.known_torradeira['row']}, {self.known_torradeira['col']})")
-                if new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']: # Se o robot cair dentro da torradeira oq acontece:
-                    bolor_row, bolor_col = self.simulate_move_bolor(new_row, new_col, bolor_row, bolor_col)
-
-
-                if bolor_row == self.known_torradeira['row'] and bolor_col == self.known_torradeira['col']:
-                    score += 1500
-                else:
-                    distance_bolor_torradeira = abs(self.bolor_pos['row'] - self.known_torradeira['row']) + abs(self.bolor_pos['col'] - self.known_torradeira['col'])
-                    new_distance_bolor_torradeira = abs(bolor_row - self.known_torradeira['row']) + abs(bolor_col - self.known_torradeira['col'])
-                    if new_distance_bolor_torradeira < distance_bolor_torradeira:
-                        score += 50*(distance_bolor_torradeira - new_distance_bolor_torradeira)
+                    temp_bolor_row, temp_bolor_col = self.simulate_move_bolor(new_row, new_col, bolor_row, bolor_col)
+                    if temp_bolor_row == self.known_torradeira['row'] and temp_bolor_col == self.known_torradeira['col']:
+                        score += 1500
                     else:
-                        score -= 15
+                        distance_bolor_torradeira = abs(self.bolor_pos['row'] - self.known_torradeira['row']) + abs(self.bolor_pos['col'] - self.known_torradeira['col'])
+                        new_distance_bolor_torradeira = abs(bolor_row - self.known_torradeira['row']) + abs(bolor_col - self.known_torradeira['col'])
+                        if new_distance_bolor_torradeira < distance_bolor_torradeira:
+                            score += 50*(distance_bolor_torradeira - new_distance_bolor_torradeira)
+                        else:
+                            score -= 15
 
-            if bolor_row == new_row and bolor_col == new_col:
-                score -= 2000
+        # Common penalties
+        if new_row == bolor_row and new_col == bolor_col:
+            score -= 2000
 
+        # Penalize previously visited positions
         for i in range(len(self.last_positions)):
             if (new_row, new_col) == self.last_positions[i]:
                 score -= 5*i
                 break
 
-
         print(f"Score: {score}")
-        time.sleep(0.5)
         return score, change_start
+        
 
     def play_game_autonomous(self):
         """
@@ -683,52 +674,67 @@ class GameBoard:
         moves_count = 0
         max_moves = 100  # Prevent infinite loops
         
-        while not self.game_over and moves_count < max_moves:
-            self.display()
-            time.sleep(1)  # Add delay to make movement visible
+        try:
+            while not self.game_over and moves_count < max_moves:
+                self.display()
+                time.sleep(1)  # Add delay to make movement visible
+                
+                # Get and execute best move
+                if self.skip:
+                    self.skip = False
+                    print("\nBolor está na mesma posição que o robot. Pular jogada.")
+                    self.move_bolor()
+                    continue
+
+                move, strat = self.get_autonomous_move()
+                if self.move_robot(move, strat):
+                    self.move_bolor()
+                    moves_count += 1
             
-            # Get and execute best move
-            if self.skip:
-                self.skip = False
-                print("\nBolor está na mesma posição que o robot. Pular jogada.")
-                self.move_bolor()
-                continue
-
-            move, strat = self.get_autonomous_move()
-            if self.move_robot(move, strat):
-                self.move_bolor()
-                moves_count += 1
+            self.display()
+            if self.won:
+                print("\nRobot wins!")
+            else:
+                print("\nGame Over! Mold wins!")
+            print(f"Total moves: {moves_count}")
+            
+        except KeyboardInterrupt:
+            print("\nJogo interrompido pelo usuário!")
+            self.display()  # Show final state
+            print(f"Total moves before interruption: {moves_count}")
+        except Exception as e:
+            print(f"\nErro inesperado: {str(e)}")
         
-        self.display()
-        if self.won:
-            print("\nRobot wins!")
-        else:
-            print("\nGame Over! Mold wins!")
-        print(f"Total moves: {moves_count}")
-
     def check_game_state(self):
-        # Verificar se o robot chegou à manteiga
-        if self.robot_pos['row'] == self.manteiga_pos['row'] and \
-           self.robot_pos['col'] == self.manteiga_pos['col']:
+        # Check if robot reached butter
+        if (self.manteiga_pos is not None and 
+            self.robot_pos['row'] == self.manteiga_pos['row'] and 
+            self.robot_pos['col'] == self.manteiga_pos['col'] and 
+            not self.has_butter):
+            self.has_butter = True
+            self.need_return_home = True
+            self.manteiga_pos = None
+            print("\nManteiga encontrada! A voltar para casa inicial...")
+            return
+        
+        # Check if robot returned home with butter
+        if (self.has_butter and 
+            self.robot_pos['row'] == self.home_pos['row'] and 
+            self.robot_pos['col'] == self.home_pos['col']):
             self.game_over = True
             self.won = True
             return
 
-        # if self.robot_pos['row'] == self.torradeira_pos['row'] and \
-        #    self.robot_pos['col'] == self.torradeira_pos['col']:
-        #     # tem de dar skip na sua jogada
-        #     self.skip = True
-
-        # Verificar se o bolor chegou à manteiga ou ao robot
-        if (self.bolor_pos['row'] == self.manteiga_pos['row'] and \
-            self.bolor_pos['col'] == self.manteiga_pos['col']) or \
-           (self.bolor_pos['row'] == self.robot_pos['row'] and \
+        # Check if mold caught the robot
+        if (self.bolor_pos['row'] == self.robot_pos['row'] and 
             self.bolor_pos['col'] == self.robot_pos['col']):
             self.game_over = True
             self.won = False
+            return
 
-        if self.bolor_pos['row'] == self.torradeira_pos['row'] and \
-           self.bolor_pos['col'] == self.torradeira_pos['col']:
+        # Check if mold reached toaster
+        if (self.bolor_pos['row'] == self.torradeira_pos['row'] and 
+            self.bolor_pos['col'] == self.torradeira_pos['col']):
             self.game_over = True
             self.won = True
             return
@@ -741,10 +747,10 @@ class GameBoard:
             for j in range(self.size):
                 pos_char = '.'
                 if i == self.robot_pos['row'] and j == self.robot_pos['col']:
-                    pos_char = 'R'
+                    pos_char = 'R*' if self.has_butter else 'R'  # Add * when robot has butter
                 elif i == self.bolor_pos['row'] and j == self.bolor_pos['col']:
                     pos_char = 'B'
-                elif i == self.manteiga_pos['row'] and j == self.manteiga_pos['col']:
+                elif self.manteiga_pos and i == self.manteiga_pos['row'] and j == self.manteiga_pos['col']:
                     pos_char = 'M'
                 elif i == self.torradeira_pos['row'] and j == self.torradeira_pos['col']:
                     pos_char = 'T'
