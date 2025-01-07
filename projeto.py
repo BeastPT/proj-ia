@@ -4,6 +4,7 @@ from pybricks.ev3devices import (Motor, TouchSensor, ColorSensor, UltrasonicSens
 from pybricks.parameters import Port, Stop, Color
 from pybricks.tools import wait
 from pybricks.robotics import DriveBase
+
 from sys import exit
 import time
 
@@ -14,6 +15,7 @@ ev3 = EV3Brick()
 color_sensor = ColorSensor(Port.S2)
 touch_sensorLeft = TouchSensor(Port.S3)
 touch_sensorRight = TouchSensor(Port.S4)
+ultrasonic_sensor = UltrasonicSensor(Port.S1)
 left_motor = Motor(Port.D)
 right_motor = Motor(Port.A)
 
@@ -38,9 +40,9 @@ ambient = {
 
 
 color_weights = {
-    Color.YELLOW: 8, #Castanho
-    Color.BROWN: 4, #Amarelo
-    Color.GREEN: 2, 
+    Color.YELLOW: 8,
+    Color.BROWN: 4,
+    Color.GREEN: 2,
     Color.BLUE: 1,
     Color.BLACK: 0
 }
@@ -178,7 +180,6 @@ def get_all_objects():
 
     print_all_tables(distancia_manteiga, calor_torradeira)
     
-
 def find_nearest_zero(table, start_row, start_col):
     """
     Finds the nearest zero in a 6x6 table from the given row and column.
@@ -212,6 +213,7 @@ def find_nearest_zero(table, start_row, start_col):
 
     # If no zero is found
     return None
+
 
 def find_nearest_zero_oriented(table, start_row, start_col):
     """
@@ -379,12 +381,12 @@ def verify_objects():
         ev3.screen.clear()
         ev3.screen.draw_text(10, 10, "CAISTE NA TORRADEIRA")
         wait(10000) 
-        
+    
     if verify_bolor():
         ev3.screen.clear()
-        ev3.screen.draw_text(10, 10, "GAME OVER")  
-        exit()  
-
+        ev3.screen.draw_text(10, 10, "GAME OVER")
+        wait(10000)
+        exit()
 
 
 def wait_to_drive(distance, speed=40):
@@ -434,19 +436,19 @@ def andar_bolor():
 
 def check_pause_and_wait(TEMPO_ENTRE_JOGADA):
     paused = False
-    for i in range(TEMPO_ENTRE_JOGADA/100):
-        if (touch_sensorLeft.pressed() or touch_sensorRight.pressed()) and not False:
+    for i in range(TEMPO_ENTRE_JOGADA//100):
+        if (touch_sensorLeft.pressed() or touch_sensorRight.pressed()):
             paused = True
             ev3.screen.print("EM PAUSA")
-        wait(TEMPO_ENTRE_JOGADA/100)
+            break
+        wait(100)
 
     while paused:
         if touch_sensorLeft.pressed() or touch_sensorRight.pressed():
             paused = False
             ev3.screen.print("SAIU DE ESPERA")
         wait(100)
-
-def _evaluate_move(new_row, new_col):
+def evaluate_move(new_row, new_col):
     """
     Avalia a qualidade de um movimento.
     - Baseia-se na proximidade à manteiga e nos riscos de bolor, torradeira ou barreiras.
@@ -472,12 +474,10 @@ def _evaluate_move(new_row, new_col):
         score -= 100  # Penalidade alta se entrar em uma torradeira
 
     # Fator 4: Evitar barreiras
-    if ambient["barreira"] == color_sensor.color():
+    if color_sensor.color() == ambient["barreira"]:
         score -= 50  # Penalidade para barreiras
 
     return score
-
-
 
 def get_autonomous_move():
     """
@@ -497,7 +497,7 @@ def get_autonomous_move():
     for row_delta, col_delta in directions:
         new_row = robot_row + row_delta
         new_col = robot_col + col_delta
-        score = _evaluate_move(new_row, new_col)
+        score = evaluate_move(new_row, new_col)
 
         if score > best_score:
             best_score = score
@@ -505,87 +505,94 @@ def get_autonomous_move():
 
     return best_move
 
-def atualizar_matrizes():
+def atualizar_direcao(row_delta, col_delta):
     """
-    Atualiza as matrizes de distância da manteiga e calor da torradeira
-    com base na posição do robô, bolor e manteiga.
+    Atualiza a direção do robô com base nos deltas de linha e coluna.
     """
-    global distancia_manteiga, calor_torradeira
+    global change_row, change_col
+    if row_delta == -1 and col_delta == 0:  # Cima
+        while not (change_row == -1 and change_col == 0):
+            turn_left()
+    elif row_delta == 1 and col_delta == 0:  # Baixo
+        while not (change_row == 1 and change_col == 0):
+            turn_left()
+    elif row_delta == 0 and col_delta == -1:  # Esquerda
+        while not (change_row == 0 and change_col == -1):
+            turn_left()
+    elif row_delta == 0 and col_delta == 1:  # Direita
+        while not (change_row == 0 and change_col == 1):
+            turn_left()
 
-    # Atualiza a distância à manteiga
-    for row in range(6):
-        for col in range(6):
-            distancia_manteiga[row][col] = abs(row - robot_row) + abs(col - robot_col)
+def determinar_direcao_torradeira():
+    min_distance = float('inf')
+    direction_angle = None
 
-    # Atualiza o calor da torradeira
-    for row in range(6):
-        for col in range(6):
-            calor_torradeira[row][col] = abs(row - position_bolor["row"]) + abs(col - position_bolor["col"])
+    # Resetar ângulo inicial dos motores
+    left_motor.reset_angle(0)
+    right_motor.reset_angle(0)
 
+    # Girar 360 graus (assumindo que 360 graus de rotação dos motores correspondem a 360 graus de rotação do robô)
+    while abs(left_motor.angle()) < 360:
+        robot.drive(0, 30)  # Girar no lugar a 30 graus por segundo
+        distance = ultrasonic_sensor.distance()
+        if distance < min_distance:
+            min_distance = distance
+            direction_angle = left_motor.angle()
+        wait(100)
 
-def determinar_estrategia():
-    """
-    Determina a estratégia com base nas posições do bolor e da manteiga.
-    Retorna "EVITAR_BOLOR" ou "ALCANCAR_MANTEIGA".
-    """
-    manteiga_distance_robot = abs(robot_row - position_bolor["row"]) + abs(robot_col - position_bolor["col"])
-    manteiga_distance_bolor = abs(position_bolor["row"] - robot_row) + abs(position_bolor["col"] - robot_col)
+    robot.stop()
 
-    if manteiga_distance_bolor < manteiga_distance_robot:
-        return "EVITAR_BOLOR"
-    return "ALCANCAR_MANTEIGA"
+    if direction_angle is not None:
+        ev3.screen.print("Torradeira a {min_distance} mm na direção {direction_angle} graus.")
+        # Atualizar direção do robô para a direção da torradeira
+        atualizar_direcao_para_angulo(direction_angle)
+    else:
+        ev3.screen.print("Torradeira não encontrada.")
 
+def atualizar_direcao_para_angulo(target_angle):
+    current_angle = left_motor.angle()
+    angle_to_turn = target_angle - current_angle
+
+    # Girar o robô para o ângulo desejado
+    if angle_to_turn > 0:
+        robot.turn(angle_to_turn)
+    else:
+        robot.turn(angle_to_turn)
 
 def realizar_jogada():
-    global robot_row, robot_col
-
-    # Atualize as matrizes de inteligência
-    atualizar_matrizes()
-
-    # Obtenha o próximo movimento
+    get_all_objects()  # Atualiza as informações sobre o ambiente
+    verify_objects()   # Verifica se o robô encontrou a manteiga, torradeira ou bolor
+    
+    distance_torradeira = get_distance("Calor Torradeira")
+    # Detecta calor da torradeira e determina sua direção se necessário
+    if distance_torradeira == 1:
+        ev3.screen.print("Calor da torradeira detectado!")
+        determinar_direcao_torradeira()
+    else:
+        ev3.screen.print("Nenhum calor detectado.")
+        ev3.screen.print(distance_torradeira)
+    
+    # Determina o melhor movimento com base nas heurísticas definidas
     move = get_autonomous_move()
     if move:
         row_delta, col_delta = move
-        new_row = robot_row + row_delta
-        new_col = robot_col + col_delta
-
-        # Movimente o robô de acordo com a decisão
-        if row_delta == -1:
-            forward(100)  # Cima
-        elif row_delta == 1:
-            backward(100)  # Baixo
-        elif col_delta == -1:
-            turn_left()
-            forward(100)  # Esquerda
-        elif col_delta == 1:
-            turn_right()
-            forward(100)  # Direita
-
-        # Atualize a posição do robô
-        robot_row = new_row
-        robot_col = new_col
-
-        # Verifique os objetos após o movimento
-        verify_objects()
-
-        # Atualize as tabelas e exiba os dados
-        get_all_objects()
-        print_all_tables(distancia_manteiga, calor_torradeira)
-
-        # Movimente o bolor
-        andar_bolor()
-
+        # Atualiza a direção do robô com base no movimento escolhido
+        atualizar_direcao(row_delta, col_delta)
+        # Move o robô para a próxima casa
+        andar_casa()
     else:
-        print("Nenhum movimento válido encontrado!")
+        ev3.screen.clear()
+        ev3.screen.draw_text(10, 10, "SEM MOVIMENTOS VÁLIDOS")
+        wait(5000)
+        exit()
 
-    # Aguarde antes da próxima jogada
+    # Atualiza a posição do bolor após o movimento do robô
+    andar_bolor()
+    # Exibe as tabelas atualizadas para depuração
+    print_all_tables(distancia_manteiga, calor_torradeira)
+    # Verifica se o jogo deve pausar e aguarda o tempo entre jogadas
     check_pause_and_wait(TEMPO_ENTRE_JOGADA)
 
 
 while True:
     realizar_jogada()
-
-
-#disperse_table(calor_torradeira, 0, 0, 0)
-#print_table(calor_torradeira, "Tabela de Distância da Torradeira")
-#get_all_objects()
