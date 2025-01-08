@@ -359,12 +359,16 @@ class GameBoard:
         """
         Main method to update toaster knowledge after each move
         """
-        dist_torradeira = abs(self.robot_pos['row'] - self.torradeira_pos['row']) + \
-                        abs(self.robot_pos['col'] - self.torradeira_pos['col'])
+        if self.known_torradeira is not None:
+            return
+        dist_torradeira = (abs(self.robot_pos['row'] - self.torradeira_pos['row']) + \
+                        abs(self.robot_pos['col'] - self.torradeira_pos['col']))
         
         # Update heat matrix based on current position
-        if dist_torradeira <= 1:
+        if dist_torradeira == 1:
             populate_torradeira(self.calor_torradeira, self.robot_pos['row'], self.robot_pos['col'])
+        elif dist_torradeira == 0:
+            self.known_torradeira = {'row': self.robot_pos['row'], 'col': self.robot_pos['col']}
         else:
             populate_torradeira(self.calor_torradeira, self.robot_pos['row'], self.robot_pos['col'], True)
         
@@ -372,7 +376,7 @@ class GameBoard:
         toaster_pos = self.find_toaster_position()
         
         if toaster_pos:
-            print(f"\nToaster found at position: ({toaster_pos['row']}, {toaster_pos['col']})")
+            print(f"\n--------------------------------\nToaster found at position: ({toaster_pos['row']}, {toaster_pos['col']})")
             
     def update_matrices(self):
         aux = [[None] * 6 for _ in range(6)]
@@ -497,7 +501,7 @@ class GameBoard:
             # Calculate score for this move
             score, change_strat = self._evaluate_move(new_row, new_col)
             possible_moves.append((move, score, change_strat))
-        time.sleep(1)
+        time.sleep(2)
         # If no valid moves, return random move
         if not possible_moves:
             return random.choice(['w', 'a', 's', 'd'])
@@ -612,7 +616,14 @@ class GameBoard:
                 
             if new_row == self.bolor_pos['row'] or new_col == self.bolor_pos['col']:
                 score -= 15
-                
+
+            # Additional penalty for positions near barriers
+            # for barrier in self.discovered_barriers:
+            #     barrier_start, barrier_end = barrier
+            #     if (abs(new_row - barrier_start[0]) + abs(new_col - barrier_start[1])) <= 1:
+            #         score -= 50  # Penalize being next to a barrier
+            
+            print(f"Score: {score}")
             return score, False
 
         # If using butter strategy and haven't got butter yet
@@ -624,7 +635,7 @@ class GameBoard:
                 print(f"Distance to butter: {butter_distance}")
                 print(f"Distance bolor to butter: {bolor_to_butter}")
                 
-                if butter_distance <= bolor_to_butter:
+                if butter_distance < bolor_to_butter:
                     score += (10 - butter_distance) * 10
                 else:
                     change_start = True
@@ -641,26 +652,38 @@ class GameBoard:
         # Using toaster strategy
         else:
             if self.known_torradeira:
-                if new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']:
-                    temp_bolor_row, temp_bolor_col = self.simulate_move_bolor(new_row, new_col, bolor_row, bolor_col)
-                    if temp_bolor_row == self.known_torradeira['row'] and temp_bolor_col == self.known_torradeira['col']:
-                        score += 1500
+                distance_bolor_robot = (abs(bolor_row - new_row) + abs(bolor_col - new_col))
+                distance_bolor_torradeira = abs(self.bolor_pos['row'] - self.known_torradeira['row']) + abs(self.bolor_pos['col'] - self.known_torradeira['col'])
+                print(f"Distance bolor to robot: {distance_bolor_robot}")
+                if (new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']):
+                    if (distance_bolor_robot >=2 and distance_bolor_robot < distance_bolor_torradeira):
+                        score += 500
                     else:
-                        distance_bolor_torradeira = abs(self.bolor_pos['row'] - self.known_torradeira['row']) + abs(self.bolor_pos['col'] - self.known_torradeira['col'])
-                        new_distance_bolor_torradeira = abs(bolor_row - self.known_torradeira['row']) + abs(bolor_col - self.known_torradeira['col'])
-                        if new_distance_bolor_torradeira < distance_bolor_torradeira:
-                            score += 50*(distance_bolor_torradeira - new_distance_bolor_torradeira)
-                        else:
-                            score -= 15
+                        score -= 500
+                else:
+                    new_distance_bolor_torradeira = abs(bolor_row - self.known_torradeira['row']) + abs(bolor_col - self.known_torradeira['col'])
 
+                    if new_distance_bolor_torradeira < distance_bolor_torradeira:
+                        val = 50*(distance_bolor_torradeira - new_distance_bolor_torradeira)
+                        score += val
+                        #score -= 10*(distance_bolor_robot-new_distance_bolor_robot)
+                    else:
+                        score -= 15
+
+                    if (bolor_row == self.known_torradeira['row'] and bolor_col == self.known_torradeira['col']):
+                        score += 1500
         # Common penalties
         if new_row == bolor_row and new_col == bolor_col:
+            score -= 5000
+
+        if self.known_manteiga is not None and bolor_row == self.known_manteiga['row'] and bolor_col == self.known_manteiga['col']:
             score -= 2000
 
         # Penalize previously visited positions
         for i in range(len(self.last_positions)):
             if (new_row, new_col) == self.last_positions[i]:
-                score -= 5*i
+                score -= (5*i+5)
+                print(f"Movimento antigo {i}: {5*i}")
                 break
 
         print(f"Score: {score}")

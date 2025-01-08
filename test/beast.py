@@ -386,13 +386,15 @@ class Cerebro:
         dist_torradeira = get_distance("Distância da Torradeira")
         
         # Update heat matrix based on current position
-        if dist_torradeira and dist_torradeira <= 1:
+        if dist_torradeira and dist_torradeira == 1:
             populate_torradeira(self.calor_torradeira, self.robot_pos['row'], self.robot_pos['col'])
+        elif dist_torradeira and dist_torradeira == 0:
+            self.known_torradeira = {'row': self.robot_pos['row'], 'col': self.robot_pos['col']}
         else:
             populate_torradeira(self.calor_torradeira, self.robot_pos['row'], self.robot_pos['col'], True)
         
         # Try to find toaster position
-        toaster_pos = self.find_toaster_position()
+        #toaster_pos = self.find_toaster_position()
         
         #if toaster_pos:
             #print(f"\nToaster found at position: ({toaster_pos['row']}, {toaster_pos['col']})")
@@ -473,6 +475,9 @@ class Cerebro:
 
         new_row, new_col = self.robot_pos['row'], self.robot_pos['col']
 
+        print("\nDirection move: " + direction)
+
+
         if direction == 'w':  # cima
             new_row -= 1
         elif direction == 's':  # baixo
@@ -491,7 +496,6 @@ class Cerebro:
                 return False
 
 
-            # MUDAR  -   ANDAR COM O ROBOT E FAZER VER SE BATEU NUMA BARREIRA, DAR RETURN FALSE E ADICIONAR A BARREIRA AO self.discovered_barriers
             if direction == 'w':
                 turn_left()
                 turn_left()
@@ -499,9 +503,9 @@ class Cerebro:
                 # do nothing
                 pass
             elif direction == 'a':  # esquerda
-                turn_left()
-            elif direction == 'd':  # direita
                 turn_right()
+            elif direction == 'd':  # direita
+                turn_left()
         
             val = andar_casa()
             if direction == 'w':
@@ -511,12 +515,13 @@ class Cerebro:
                 # do nothing
                 pass
             elif direction == 'a':  # esquerda
-                turn_right()
-            elif direction == 'd':  # direita
                 turn_left()
+            elif direction == 'd':  # direita
+                turn_right()
             if not val:
                 #FOUND BARREIR
                 self.discovered_barriers.add(((self.robot_pos['row'], self.robot_pos['col']), (new_row, new_col)))
+                self.discovered_barriers.add(((new_row, new_col), (self.robot_pos['row'], self.robot_pos['col'])))
                 return False
             
 
@@ -574,7 +579,7 @@ class Cerebro:
 
     def _evaluate_move(self, new_row, new_col):
         score = 0
-        #print(f"New position: ({new_row}, {new_col})")
+        print("\nNew position: (" + str(new_row) + ", " + str(new_col) + ")")
         
         if (0 > new_row > self.size and 0 > new_col > self.size):
             print("Fora dos limites")
@@ -602,7 +607,7 @@ class Cerebro:
             return score, False
 
         # If using butter strategy and haven't got butter yet
-        elif self.manteiga_strat and not self.has_butter and self.known_manteiga is not None:
+        elif self.manteiga_strat and not self.has_butter:
             if self.known_manteiga:
                 butter_distance = abs(new_row - self.known_manteiga['row']) + abs(new_col - self.known_manteiga['col'])
                 bolor_to_butter = abs(bolor_row - self.known_manteiga['row']) + abs(bolor_col - self.known_manteiga['col'])
@@ -610,7 +615,7 @@ class Cerebro:
                 #print(f"Distance to butter: {butter_distance}")
                 #print(f"Distance bolor to butter: {bolor_to_butter}")
                 
-                if butter_distance <= bolor_to_butter:
+                if butter_distance < bolor_to_butter:
                     score += (10 - butter_distance) * 10
                 else:
                     change_start = True
@@ -627,20 +632,32 @@ class Cerebro:
         # Using toaster strategy
         else:
             if self.known_torradeira:
-                if new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']:
-                    temp_bolor_row, temp_bolor_col = self.simulate_move_bolor(new_row, new_col, bolor_row, bolor_col)
-                    if temp_bolor_row == self.known_torradeira['row'] and temp_bolor_col == self.known_torradeira['col']:
-                        score += 1500
+                distance_bolor_robot = (abs(bolor_row - new_row) + abs(bolor_col - new_col))
+                distance_bolor_torradeira = abs(self.bolor_pos['row'] - self.known_torradeira['row']) + abs(self.bolor_pos['col'] - self.known_torradeira['col'])
+                #print(f"Distance bolor to robot: {distance_bolor_robot}")
+                if (new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']):
+                    if (distance_bolor_robot >=2 and distance_bolor_robot < distance_bolor_torradeira):
+                        score += 500
                     else:
-                        distance_bolor_torradeira = abs(self.bolor_pos['row'] - self.known_torradeira['row']) + abs(self.bolor_pos['col'] - self.known_torradeira['col'])
-                        new_distance_bolor_torradeira = abs(bolor_row - self.known_torradeira['row']) + abs(bolor_col - self.known_torradeira['col'])
-                        if new_distance_bolor_torradeira < distance_bolor_torradeira:
-                            score += 50*(distance_bolor_torradeira - new_distance_bolor_torradeira)
-                        else:
-                            score -= 15
+                        score -= 500
+                else:
+                    new_distance_bolor_torradeira = abs(bolor_row - self.known_torradeira['row']) + abs(bolor_col - self.known_torradeira['col'])
+
+                    if new_distance_bolor_torradeira < distance_bolor_torradeira:
+                        val = 50*(distance_bolor_torradeira - new_distance_bolor_torradeira)
+                        score += val
+                        #score -= 10*(distance_bolor_robot-new_distance_bolor_robot)
+                    else:
+                        score -= 15
+
+                    if (bolor_row == self.known_torradeira['row'] and bolor_col == self.known_torradeira['col']):
+                        score += 1500
 
         # Common penalties
         if new_row == bolor_row and new_col == bolor_col:
+            score -= 2000
+
+        if self.known_manteiga is not None and bolor_row == self.known_manteiga['row'] and bolor_col == self.known_manteiga['col']:
             score -= 2000
 
         # Penalize previously visited positions
@@ -649,7 +666,7 @@ class Cerebro:
                 score -= 5*i
                 break
 
-        #print(f"Score: {score}")
+        print("\nScore: " + str(score))
         return score, change_start
         
 
