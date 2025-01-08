@@ -13,8 +13,8 @@ import time
 # Inicialização
 ev3 = EV3Brick()
 color_sensor = ColorSensor(Port.S2)
-touch_sensorLeft = TouchSensor(Port.S3)
-touch_sensorRight = TouchSensor(Port.S4)
+#touch_sensorLeft = TouchSensor(Port.S3)
+#touch_sensorRight = TouchSensor(Port.S4)
 #ultrasonic_sensor = UltrasonicSensor(Port.S1)
 left_motor = Motor(Port.D)
 right_motor = Motor(Port.A)
@@ -383,6 +383,8 @@ class Cerebro:
         """
         Main method to update toaster knowledge after each move
         """
+        if self.known_torradeira is not None:
+            return self.known_torradeira
         dist_torradeira = get_distance("Distância da Torradeira")
         
         # Update heat matrix based on current position
@@ -525,10 +527,6 @@ class Cerebro:
                 return False
             
 
-            # Verificar se está na torradeira
-            # if new_row == self.torradeira_pos['row'] and new_col == self.torradeira_pos['col']:
-            #     self.skip = True
-
             self.robot_pos['row'] = new_row
             self.robot_pos['col'] = new_col
 
@@ -540,6 +538,10 @@ class Cerebro:
                 time.sleep(1)
 
             self.update_matrices()
+
+            # Verificar se está na torradeira
+            if self.known_torradeira and new_row == self.known_torradeira['row'] and new_col == self.known_torradeira['col']:
+                self.skip = True
 
             # Verificar vitória/derrota
             self.check_game_state()

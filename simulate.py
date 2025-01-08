@@ -241,8 +241,8 @@ class GameBoard:
                 self.torradeira_pos = {'row': row, 'col': col}
                 break
             
-        # self.manteiga_pos = {'row': 1, 'col': 4}        
-        # self.torradeira_pos = {'row': 0, 'col': 1}
+        self.manteiga_pos = {'row': 1, 'col': 5}        
+        self.torradeira_pos = {'row': 1, 'col': 1}
 
 
         # Inicializar as barreiras
@@ -255,34 +255,40 @@ class GameBoard:
         # Adicionar barreiras aleatórias em algumas posições
         num_barriers = random.randint(5, 10)  # Número aleatório de posições com barreiras
         
-        for _ in range(num_barriers):
-            row = random.randint(0, self.size-1)
-            col = random.randint(0, self.size-1)
-            pos = (row, col)
+        # for _ in range(num_barriers):
+        #     row = random.randint(0, self.size-1)
+        #     col = random.randint(0, self.size-1)
+        #     pos = (row, col)
             
-            # Evitar posições importantes
-            if (row == self.robot_pos['row'] and col == self.robot_pos['col']) or \
-               (row == self.bolor_pos['row'] and col == self.bolor_pos['col']) or \
-               (row == self.manteiga_pos['row'] and col == self.manteiga_pos['col']) or \
-               (row == self.torradeira_pos['row'] and col == self.torradeira_pos['col']):
-                continue
+        #     # Evitar posições importantes
+        #     if (row == self.robot_pos['row'] and col == self.robot_pos['col']) or \
+        #        (row == self.bolor_pos['row'] and col == self.bolor_pos['col']) or \
+        #        (row == self.manteiga_pos['row'] and col == self.manteiga_pos['col']) or \
+        #        (row == self.torradeira_pos['row'] and col == self.torradeira_pos['col']):
+        #         continue
                 
-            # Escolher aleatoriamente uma direção para a barreira
-            directions = []
-            if row > 0:  # Pode ter barreira para cima
-                directions.append(((row, col), (row-1, col)))
-            if row < self.size-1:  # Pode ter barreira para baixo
-                directions.append(((row, col), (row+1, col)))
-            if col > 0:  # Pode ter barreira para esquerda
-                directions.append(((row, col), (row, col-1)))
-            if col < self.size-1:  # Pode ter barreira para direita
-                directions.append(((row, col), (row, col+1)))
+        #     # Escolher aleatoriamente uma direção para a barreira
+        #     directions = []
+        #     if row > 0:  # Pode ter barreira para cima
+        #         directions.append(((row, col), (row-1, col)))
+        #     if row < self.size-1:  # Pode ter barreira para baixo
+        #         directions.append(((row, col), (row+1, col)))
+        #     if col > 0:  # Pode ter barreira para esquerda
+        #         directions.append(((row, col), (row, col-1)))
+        #     if col < self.size-1:  # Pode ter barreira para direita
+        #         directions.append(((row, col), (row, col+1)))
             
-            if directions:
-                barrier = random.choice(directions)
-                # Adicionar a barreira nos dois sentidos
-                self.barriers.add(barrier)
-                self.barriers.add((barrier[1], barrier[0]))  # Adiciona a barreira no sentido oposto
+        #     if directions:
+        #         barrier = random.choice(directions)
+        #         # Adicionar a barreira nos dois sentidos
+        #         self.barriers.add(barrier)
+        #         self.barriers.add((barrier[1], barrier[0]))  # Adiciona a barreira no sentido oposto
+
+        self.barriers.add(((2,0), (3,0)))
+        self.barriers.add(((3,0), (2,0)))
+
+        self.barriers.add(((2,1), (2,2)))
+        self.barriers.add(((2,2), (2,1)))
 
 
     def discover_barriers(self, row, col):
