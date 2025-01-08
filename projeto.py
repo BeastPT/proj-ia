@@ -7,10 +7,12 @@ from pybricks.robotics import DriveBase
 
 from sys import exit
 import time
-
+import random
 from collections import deque
 
-# Inicialização
+# -------------------------------
+# INICIALIZAÇÃO (variáveis EV3)
+# -------------------------------
 ev3 = EV3Brick()
 color_sensor = ColorSensor(Port.S2)
 touch_sensorLeft = TouchSensor(Port.S3)
@@ -19,111 +21,83 @@ ultrasonic_sensor = UltrasonicSensor(Port.S1)
 left_motor = Motor(Port.D)
 right_motor = Motor(Port.A)
 
-# Definição da base de condução do robô
 robot = DriveBase(left_motor, right_motor, wheel_diameter=50, axle_track=150)
 
-# Variáveis para coordenadas
 robot_col = 0
 robot_row = 0
+TEMPO_ENTRE_JOGADA = 10000  # 10 segundos
 
-# Variáveis de tempo
-TEMPO_ENTRE_JOGADA = 10000 # 10 segundos
-
-# Variáveis para direção
-change_col = 1 # -1 0 1
-change_row = 0 # -1 0 1
+# Direção inicial
+change_col = 1
+change_row = 0
 
 ambient = {
     "barreira": Color.RED,
     "casa": Color.BLACK,
 }
 
-
 color_weights = {
-    Color.YELLOW: 8,
     Color.BROWN: 4,
     Color.GREEN: 2,
     Color.BLUE: 1,
-    Color.BLACK: 0
 }
 
 is_first_move = True
 
+# -------------------------------
+# Tabelas e variáveis do jogo
+# -------------------------------
 distancia_manteiga = [[None] * 6 for _ in range(6)]
 possible_zeros_manteiga = 36
 
 calor_torradeira = [[None] * 6 for _ in range(6)]
 possible_zeros_torradeira = 36
 
+# Posição do bolor
 position_bolor = {'row': 5, 'col': 5}
 
+# Variável para indicar se o robô já pegou a manteiga
+has_manteiga = False
 
-# Funções Auxiliares
+# Posição calculada/descoberta da torradeira
+posicao_torradeira = {"row": None, "col": None}
 
-def print_table(table, table_name):
-    """
-    Imprime uma tabela 6x6 com formatação adequada
-    """
-    # Imprime o nome da tabela
-    print("\n" + "=" * 50)
-    print(table_name)
-    print("=" * 50)
-    
-    # Imprime os números das colunas
-    print("     ", end="")
-    for col in range(6):
-        print(" {:^5} ".format(col), end="")
-    print("\n")
-    
-    # Imprime cada linha com seus valores
-    for row in range(6):
-        print(" {} |".format(row), end="")
-        for col in range(6):
-            value = table[row][col]
-            if value is None:
-                print("  -   ", end="")
-            else:
-                print(" {:.2f} ".format(value), end="")
-        print()  # Nova linha no final de cada row
-    print()  # Linha extra no final da tabela
+# -------------------------------
+# NOVAS VARIÁVEIS GLOBAIS
+# (vindas da lógica de evaluate_move)
+# -------------------------------
+last_positions = []             # Para penalizar revisitas
+need_return_home = False        # Se quisermos habilitar “retornar para (0,0)”
+home_pos = {'row': 0, 'col': 0} # Posição da “casa”/início
+manteiga_strat = True           # Estratégia de procurar manteiga
+known_manteiga = None           # Se descobrimos onde está a manteiga
+known_torradeira = None         # Se descobrimos onde está a torradeira
 
-def print_all_tables(dist_manteiga, calor_torrad):
-    """
-    Imprime todas as tabelas em sequência
-    """
-    print_table(dist_manteiga, "Tabela de Distância da Manteiga")
-    print_table(calor_torrad, "Tabela de Calor da Torradeira")
+# -------------------------------
+#  Funções auxiliares
+# -------------------------------
+def has_numbers(table):
+    return any(cell is not None for row in table for cell in row)
 
 def disperse_table(table, value, row, col, radius=6):
     for r in range(row - radius, row + radius + 1):
         for c in range(col - radius, col + radius + 1):
-            # Verificar limites da tabela
             if 0 <= r < len(table) and 0 <= c < len(table[0]):
-                # Calcular a distância de Manhattan
                 distance = abs(r - row) + abs(c - col)
-                # Valor decrementado com base na distância
                 decremented_value = abs(value - distance)
-
                 table[r][c] = decremented_value
 
 def filter_table(table1, table2):
-    """
-    Guarda os valores iguais nas duas tabelas e None nos outros      
-    """
     for row in range(len(table1)):
         for col in range(len(table1[0])):
             if table1[row][col] != table2[row][col]:
                 table1[row][col] = None
 
 def filter_table_min(table1, table2):
-    """
-    Mantém os menores valores entre duas tabelas  
-    """
     for row in range(len(table1)):
         for col in range(len(table1[0])):
             if table1[row][col] > table2[row][col]:
-                table1[row][col] = table2[row][col]     
-
+                table1[row][col] = table2[row][col]
 
 def populate_tabela(table):
     aux_tables = []
@@ -135,7 +109,6 @@ def populate_tabela(table):
                 temp_table = [[None] * len(table[0]) for _ in range(len(table))]
                 disperse_table(temp_table, 0, row, col)
                 aux_tables.append(temp_table)
-
     if aux_tables:
         result_table = aux_tables[0]
         for i in range(1, len(aux_tables)):
@@ -143,163 +116,56 @@ def populate_tabela(table):
         return result_table, zeros
     return table, None
 
-def has_numbers(table):
-    return any(cell is not None for row in table for cell in row)
-
-
-# Inicialização
-aux = [[None] * 6 for _ in range(6)]
-
-
-def get_all_objects():
-    global distancia_manteiga, calor_torradeira, is_first_move, possible_zeros_manteiga, possible_zeros_torradeira
-
-    if possible_zeros_manteiga != 1:
-        distance_manteiga = get_distance("Distância Manteiga")
-        if distance_manteiga is not None:
-            if has_numbers(distancia_manteiga):
-                disperse_table(aux, distance_manteiga, robot_row, robot_col)
-                filter_table(distancia_manteiga, aux)
-                distancia_manteiga, possible_zeros_manteiga = populate_tabela(distancia_manteiga)
-                #print_table(distancia_manteiga, "Tabela de Distância da Manteiga")
+def print_table(table, table_name):
+    print("\n" + "=" * 50)
+    print(table_name)
+    print("=" * 50)
+    print("     ", end="")
+    for col in range(6):
+        print(" {:^5} ".format(col), end="")
+    print("\n")
+    for row in range(6):
+        print(" {} |".format(row), end="")
+        for col in range(6):
+            value = table[row][col]
+            if value is None:
+                print("  -   ", end="")
             else:
-                disperse_table(distancia_manteiga, distance_manteiga, robot_row, robot_col)
-    wait(1000)
+                print(" {:.2f} ".format(value), end="")
+        print()
+    print()
 
-    if possible_zeros_torradeira != 1:
-        distance_torradeira = get_distance("Calor Torradeira")
-        if distance_torradeira is not None:
-            if has_numbers(calor_torradeira):
-                disperse_table(aux, distance_torradeira, robot_row, robot_col)
-                filter_table(calor_torradeira, aux)
-                calor_torradeira, possible_zeros_torradeira = populate_tabela(calor_torradeira)
-                #print_table(calor_torradeira, "Tabela de Distância da Torradeira")
-            else:
-                disperse_table(calor_torradeira, distance_torradeira, robot_row, robot_col)
-    wait(1000)
+def print_all_tables(dist_manteiga, calor_torrad):
+    print_table(dist_manteiga, "Tabela de Distância da Manteiga")
+    print_table(calor_torrad, "Tabela de Calor da Torradeira")
 
-    print_all_tables(distancia_manteiga, calor_torradeira)
-    
+# -------------------------------
+# BFS para achar zero
+# -------------------------------
 def find_nearest_zero(table, start_row, start_col):
-    """
-    Finds the nearest zero in a 6x6 table from the given row and column.
-    Uses Breadth-First Search (BFS) to determine the shortest distance.
-    """
     rows, cols = len(table), len(table[0])
     visited = [[False] * cols for _ in range(rows)]
-    queue = deque([(start_row, start_col, 0)])  # (row, col, distance)
+    queue = deque([(start_row, start_col, 0)])  # (row, col, dist)
 
     while queue:
         row, col, distance = queue.popleft()
-
-        # Check boundaries and if already visited
         if row < 0 or col < 0 or row >= rows or col >= cols or visited[row][col]:
             continue
-
-        # Mark as visited
         visited[row][col] = True
-
-        # Check if the current cell is a 0
         if table[row][col] == 0:
             return (row, col, distance)
-
-        # Add neighbors to the queue
+        # Adiciona vizinhos
         queue.extend([
-            (row - 1, col, distance + 1),  # Up
-            (row + 1, col, distance + 1),  # Down
-            (row, col - 1, distance + 1),  # Left
-            (row, col + 1, distance + 1)   # Right
+            (row - 1, col, distance + 1),
+            (row + 1, col, distance + 1),
+            (row, col - 1, distance + 1),
+            (row, col + 1, distance + 1)
         ])
-
-    # If no zero is found
     return None
 
-
-def find_nearest_zero_oriented(table, start_row, start_col):
-    """
-    Encontra o zero mais próximo, priorizando a direção para onde o robô está virado.
-    Usa BFS para determinar a menor distância.
-    """
-    rows, cols = len(table), len(table[0])
-    visited = [[False] * cols for _ in range(rows)]
-    queue = deque([(start_row, start_col, 0)])  # (row, col, distance)
-    prioritized_queue = []
-
-    while queue:
-        row, col, distance = queue.popleft()
-
-        # Verificar limites e se já foi visitado
-        if row < 0 or col < 0 or row >= rows or col >= cols or visited[row][col]:
-            continue
-
-        # Marcar como visitado
-        visited[row][col] = True
-
-        # Verificar se a célula atual é um zero
-        if table[row][col] == 0:
-            if (row - start_row == change_row) and (col - start_col == change_col):
-                # Priorizar se estiver na direção do robô
-                return (row, col, distance)
-            else:
-                # Adicionar para consideração posterior
-                prioritized_queue.append((row, col, distance))
-            continue
-
-        # Adicionar vizinhos à fila
-        queue.extend([
-            (row - 1, col, distance + 1),  # Para cima
-            (row + 1, col, distance + 1),  # Para baixo
-            (row, col - 1, distance + 1),  # Para a esquerda
-            (row, col + 1, distance + 1)   # Para a direita
-        ])
-
-    # Retornar o primeiro zero encontrado se nenhum estiver na direção do robô
-    return prioritized_queue[0] if prioritized_queue else None
-
-
-def find_nearest_zeros(table, start_row, start_col):
-    """
-    Finds all zeros at the nearest distance from the given position in a 6x6 table.
-    Uses Breadth-First Search (BFS) to determine the shortest distance and returns all zeros at that distance.
-    """
-    rows, cols = len(table), len(table[0])
-    visited = [[False] * cols for _ in range(rows)]
-    queue = deque([(start_row, start_col, 0)])  # (row, col, distance)
-    nearest_zeros = []
-    min_distance = float('inf')
-
-    while queue:
-        row, col, distance = queue.popleft()
-
-        # Check boundaries and if already visited
-        if row < 0 or col < 0 or row >= rows or col >= cols or visited[row][col]:
-            continue
-
-        # Mark as visited
-        visited[row][col] = True
-
-        # If a zero is found
-        if table[row][col] == 0:
-            if distance < min_distance:
-                # Found a closer zero, reset results
-                nearest_zeros = [(row, col)]
-                min_distance = distance
-            elif distance == min_distance:
-                # Add to results if it's the same shortest distance
-                nearest_zeros.append((row, col))
-            continue  # Do not explore further from this cell
-
-        # Add neighbors to the queue
-        queue.extend([
-            (row - 1, col, distance + 1),  # Up
-            (row + 1, col, distance + 1),  # Down
-            (row, col - 1, distance + 1),  # Left
-            (row, col + 1, distance + 1)   # Right
-        ])
-
-    return nearest_zeros, min_distance if nearest_zeros else None
-
-# Funções de movimento
+# -------------------------------
+#  MOVIMENTOS
+# -------------------------------
 def forward(distance):
     robot.straight(distance)
 
@@ -309,135 +175,136 @@ def backward(distance):
 def turn_left():
     global change_col, change_row
     robot.turn(-78)
-    #print("Inicial: dir=(" + str(change_col) + " ," + str(change_row) +")")
     change_col, change_row = change_row, -change_col
-    #print("Após virar à esquerda: dir=(" + str(change_col) + " ," + str(change_row) +")")
 
 def turn_right():
     global change_col, change_row
     robot.turn(78)
-    #print("Inicial: dir=(" + str(change_col) + " ," + str(change_row) +")")
     change_col, change_row = -change_row, change_col
-    #print("Após virar à direita: dir=(" + str(change_col) + " ," + str(change_row) +")")
 
 def change_position():
     global robot_col, robot_row
     robot_col += change_col
     robot_row += change_row
 
+# -------------------------------
+#  SIMULATE MOVE BOLOR
+#  (para uso no evaluate_move expandido)
+# -------------------------------
+def simulate_move_bolor(robot_target_row, robot_target_col, tmp_bolor_row=None, tmp_bolor_col=None):
+    """
+    Simula como o bolor se moveria se o robô fosse para (robot_target_row, robot_target_col).
+    Se tmp_bolor_row/col não forem dados, usa a posição global do bolor.
+    Retorna (novo_bolor_row, novo_bolor_col).
+    """
+    global position_bolor
+    if tmp_bolor_row is None or tmp_bolor_col is None:
+        tmp_bolor_row = position_bolor['row']
+        tmp_bolor_col = position_bolor['col']
 
+    # Move 1 passo na direção do robô
+    if robot_target_row < tmp_bolor_row:
+        tmp_bolor_row -= 1
+    elif robot_target_row > tmp_bolor_row:
+        tmp_bolor_row += 1
+    elif robot_target_row == tmp_bolor_row:
+        if robot_target_col < tmp_bolor_col:
+            tmp_bolor_col -= 1
+        elif robot_target_col > tmp_bolor_col:
+            tmp_bolor_col += 1
 
-# Funções da Posição
-def get_distance(text):
-    has_found = False
-    distance = 0
-    colors_shown = set()
+    return tmp_bolor_row, tmp_bolor_col
 
-    ev3.speaker.beep()
-    ev3.screen.print(text)
-
-    wait(1000)
-    ev3.speaker.beep()
-
-    for i in range(5):
-        current_color = color_sensor.color()
-
-        if current_color not in colors_shown and current_color in color_weights:
-            colors_shown.add(current_color)
-            weight = color_weights[current_color]
-            has_found = True
-
-            if weight == 0:
-                distance = 0
-                ev3.screen.print(str(current_color) + "\n Current Distance: \n" + str(distance))
-                wait(2500)
-                break
-
-            distance += weight
-            ev3.screen.print(str(current_color) + "\n Current Distance:  \n" + str(distance))
-
-        wait(1000)
-
-    ev3.screen.clear()
-    return distance if has_found else None
-
+# -------------------------------
+# LÓGICA DE VERIFICAÇÃO
+# (manteiga, torradeira, bolor)
+# -------------------------------
 def verify_manteiga():
-    return distancia_manteiga[robot_row][robot_col] == 0
+    return (distancia_manteiga[robot_row][robot_col] == 0)
 
 def verify_torradeira():
-    return calor_torradeira[robot_row][robot_col] == 0
+    return (calor_torradeira[robot_row][robot_col] == 0)
 
 def verify_bolor():
-    return robot_row == position_bolor["row"] and robot_col == position_bolor["col"]
+    return (robot_row == position_bolor["row"] and robot_col == position_bolor["col"])
 
 def verify_objects():
-    if verify_manteiga():
+    global has_manteiga
+
+    # Se o robô estiver em uma casa de manteiga e ainda não tiver pegado
+    if (not has_manteiga) and verify_manteiga():
         ev3.screen.clear()
-        ev3.screen.draw_text(10, 10, "VITÓRIA")
-        wait(10000)
+        ev3.screen.draw_text(10, 10, "Pegou a manteiga!")
+        has_manteiga = True
+        wait(2000)
+        # (Opcional) Remover a manteiga do mapa:
+        # distancia_manteiga[robot_row][robot_col] = None
+
+    # Se já pegou a manteiga e voltou para (0,0), vence
+    if has_manteiga and robot_row == 0 and robot_col == 0:
+        ev3.screen.clear()
+        ev3.screen.draw_text(10, 10, "VITÓRIA! Manteiga em (0,0).")
+        wait(5000)
         exit()
-    
+
+    # Se está em torradeira (calor_torradeira == 0)
     if verify_torradeira():
         ev3.screen.clear()
         ev3.screen.draw_text(10, 10, "CAISTE NA TORRADEIRA")
-        wait(10000) 
-    
+        wait(5000)
+
+    # Se o bolor pegou o robô
     if verify_bolor():
         ev3.screen.clear()
-        ev3.screen.draw_text(10, 10, "GAME OVER")
-        wait(10000)
+        ev3.screen.draw_text(10, 10, "GAME OVER! Bolor encontrou o robô")
+        wait(5000)
         exit()
 
-
-def wait_to_drive(distance, speed=40):
-    wait(distance/speed*1000)
-    robot.stop()
-
+# -------------------------------
+# ANDAR CASA e BOLOR
+# -------------------------------
 def andar_casa():
     robot.drive(40, 0)
     while True:
         currentColor = color_sensor.color()
-        if currentColor == ambient["barreira"]: # Encontrou barreira - voltar para tras
+        if currentColor == ambient["barreira"]:
             robot.stop()
             backward(35)
             turn_right()
             wait(500)
             andar_casa()
             break
-        elif currentColor == ambient["casa"]: # Encontrou próxima - verificar objetos
+        elif currentColor == ambient["casa"]:
             wait_to_drive(170)
             change_position()
             break
-    
     ev3.screen.clear()
     ev3.screen.print("Col: " + str(robot_col) + "\nRow: " + str(robot_row))
     wait(2000)
 
 def andar_bolor():
-    #robot_col, robot_row
     global position_bolor
-    # o bolor anda sempre ate se aproximar do robot, onde o bolor comeca na casa 5,5 e o robot na 0, 0 ele segue a prioridade N S E O
-    if robot_row < position_bolor["row"]: # Vai andar para cima
+    if robot_row < position_bolor["row"]:
         position_bolor["row"] -= 1
-    elif robot_row > position_bolor["row"]: # Vai andar para baixo
+    elif robot_row > position_bolor["row"]:
         position_bolor["row"] += 1
-    elif robot_row == position_bolor["row"]: # Vai andar para a esquerda/direita
+    elif robot_row == position_bolor["row"]:
         if robot_col < position_bolor["col"]:
             position_bolor["col"] -= 1
         elif robot_col > position_bolor["col"]:
             position_bolor["col"] += 1
-  
+
+    # Se o bolor pegou o robô
     if robot_row == position_bolor["row"] and robot_col == position_bolor["col"]:
         ev3.screen.clear()
-        ev3.screen.draw_text(10, 10, "DERROTA")
-        wait(10000)
+        ev3.screen.draw_text(10, 10, "DERROTA: Bolor")
+        wait(5000)
         exit()
-
 
 def check_pause_and_wait(TEMPO_ENTRE_JOGADA):
     paused = False
     for i in range(TEMPO_ENTRE_JOGADA//100):
-        if (touch_sensorLeft.pressed() or touch_sensorRight.pressed()):
+        if touch_sensorLeft.pressed() or touch_sensorRight.pressed():
             paused = True
             ev3.screen.print("EM PAUSA")
             break
@@ -448,42 +315,125 @@ def check_pause_and_wait(TEMPO_ENTRE_JOGADA):
             paused = False
             ev3.screen.print("SAIU DE ESPERA")
         wait(100)
+
+def wait_to_drive(distance, speed=40):
+    wait(distance/speed*1000)
+    robot.stop()
+
+# -------------------------------
+# NOVO evaluate_move (expandido)
+# -------------------------------
 def evaluate_move(new_row, new_col):
     """
-    Avalia a qualidade de um movimento.
-    - Baseia-se na proximidade à manteiga e nos riscos de bolor, torradeira ou barreiras.
+    Combina características do _evaluate_move e do evaluate_move antigo,
+    incluindo checagens de bolor, barreiras, revisitadas, manteiga, etc.
     """
+    global position_bolor, last_positions
+    global need_return_home, home_pos
+    global manteiga_strat, has_manteiga, known_manteiga
+    global known_torradeira
+    global distancia_manteiga, calor_torradeira
+    global color_sensor, ambient
+
+    size = 6
+
     score = 0
+    change_start = False  # se quiser alterar alguma estratégia externamente
 
-    # Penalidade para movimentos fora dos limites do tabuleiro
-    if not (0 <= new_row < 6 and 0 <= new_col < 6):
-        return -float('inf')  # Penalidade alta
+    print("New position: (", new_row, ", ", new_col, ")")
 
-    # Fator 1: Distância ao objetivo (manteiga)
+    # 1) Fora dos limites?
+    if not (0 <= new_row < size and 0 <= new_col < size):
+        print("Fora dos limites")
+        return -float('inf')
+
+    # 2) Simular movimento do bolor
+    bolor_row, bolor_col = simulate_move_bolor(new_row, new_col)
+
+    # 3) Se “precisamos voltar para casa”
+    if need_return_home:
+        home_distance = abs(new_row - home_pos['row']) + abs(new_col - home_pos['col'])
+        score += (10 - home_distance) * 10
+        # Bônus se chegar em casa
+        if new_row == home_pos['row'] and new_col == home_pos['col']:
+            score += 1000
+        # Se o bolor for cair na mesma casa
+        if new_row == bolor_row and new_col == bolor_col:
+            score -= 2000
+        # Penaliza se estiver na mesma linha/col do bolor
+        if (new_row == position_bolor['row']) or (new_col == position_bolor['col']):
+            score -= 15
+        print("Score (return_home):", score)
+        return score
+
+    # 4) Estratégia de manteiga
+    elif manteiga_strat and (not has_manteiga) and (known_manteiga is not None):
+        # Distâncias
+        butter_distance = abs(new_row - known_manteiga['row']) + abs(new_col - known_manteiga['col'])
+        bolor_to_butter = abs(bolor_row - known_manteiga['row']) + abs(bolor_col - known_manteiga['col'])
+        print("Distance to butter:", butter_distance)
+        print("Distance bolor to butter:", bolor_to_butter)
+        if butter_distance <= bolor_to_butter:
+            # Bom se chegamos antes do bolor
+            score += (10 - butter_distance) * 10
+        else:
+            # Penaliza e sinaliza mudança de estrat
+            change_start = True
+            score -= 35
+
+    # Se (known_manteiga é None) mas a gente ainda não pegou, poderia BFS...
+    # (Igual no snippet do simulate)
+
+    else:
+        # 5) Estratégia da torradeira
+        if known_torradeira is not None:
+            # Se new_row,new_col == known torradeira
+            if new_row == known_torradeira['row'] and new_col == known_torradeira['col']:
+                # Simula bolor e vê se ele cairia tb
+                temp_bolor_row, temp_bolor_col = simulate_move_bolor(new_row, new_col, bolor_row, bolor_col)
+                if temp_bolor_row == known_torradeira['row'] and temp_bolor_col == known_torradeira['col']:
+                    score += 1500
+                else:
+                    distance_bolor_torr = abs(position_bolor['row'] - known_torradeira['row']) \
+                                          + abs(position_bolor['col'] - known_torradeira['col'])
+                    new_dist_bolor_torr = abs(bolor_row - known_torradeira['row']) \
+                                          + abs(bolor_col - known_torradeira['col'])
+                    if new_dist_bolor_torr < distance_bolor_torr:
+                        score += 50*(distance_bolor_torr - new_dist_bolor_torr)
+                    else:
+                        score -= 15
+
+    # 6) Penalidades gerais
+    # Se new_row == bolor => penaliza
+    if new_row == bolor_row and new_col == bolor_col:
+        score -= 2000
+
+    # Se a cor do sensor for barreira => penaliza
+    if color_sensor.color() == ambient["barreira"]:
+        score -= 50
+
+    # Se existe valor em distancia_manteiga => soma
     if distancia_manteiga[new_row][new_col] is not None:
         manteiga_distance = distancia_manteiga[new_row][new_col]
-        score += (10 - manteiga_distance) * 10  # Quanto mais perto, maior o score
+        score += (10 - manteiga_distance) * 10
 
-    # Fator 2: Evitar bolor
-    bolor_distance = abs(new_row - position_bolor["row"]) + abs(new_col - position_bolor["col"])
-    if bolor_distance <= 1:  # Penalidade alta se estiver próximo ao bolor
-        score -= 100
+    # 7) Penalizar revisitas / loop 1,0 e 2,0
+    for i, pos in enumerate(last_positions):
+        if (new_row, new_col) == pos:
+            score -= 5*(len(last_positions)-i)  
+            print("Penalizado por revisitar", pos)
+            break
 
-    # Fator 3: Evitar torradeira
-    if calor_torradeira[new_row][new_col] is not None and calor_torradeira[new_row][new_col] == 0:
-        score -= 100  # Penalidade alta se entrar em uma torradeira
+    if (new_row, new_col) in [(1,0), (2,0)]:
+        score -= 10
 
-    # Fator 4: Evitar barreiras
-    if color_sensor.color() == ambient["barreira"]:
-        score -= 50  # Penalidade para barreiras
-
+    print("Score:", score)
     return score
 
+# -------------------------------
+# get_autonomous_move
+# -------------------------------
 def get_autonomous_move():
-    """
-    Determina o melhor movimento baseado em heurísticas.
-    Retorna: ('row_delta', 'col_delta') para a direção do movimento.
-    """
     directions = [
         (0, -1),  # Esquerda
         (0, 1),   # Direita
@@ -492,93 +442,97 @@ def get_autonomous_move():
     ]
     best_move = None
     best_score = -float('inf')
-
-    # Avalia cada direção possível
     for row_delta, col_delta in directions:
         new_row = robot_row + row_delta
         new_col = robot_col + col_delta
+        # Chamamos a nova evaluate_move (expandida)
         score = evaluate_move(new_row, new_col)
-
         if score > best_score:
             best_score = score
             best_move = (row_delta, col_delta)
-
     return best_move
 
 def atualizar_direcao(row_delta, col_delta):
-    """
-    Atualiza a direção do robô com base nos deltas de linha e coluna.
-    """
     global change_row, change_col
-    if row_delta == -1 and col_delta == 0:  # Cima
+    if row_delta == -1 and col_delta == 0:
         while not (change_row == -1 and change_col == 0):
             turn_left()
-    elif row_delta == 1 and col_delta == 0:  # Baixo
+    elif row_delta == 1 and col_delta == 0:
         while not (change_row == 1 and change_col == 0):
             turn_left()
-    elif row_delta == 0 and col_delta == -1:  # Esquerda
+    elif row_delta == 0 and col_delta == -1:
         while not (change_row == 0 and change_col == -1):
             turn_left()
-    elif row_delta == 0 and col_delta == 1:  # Direita
+    elif row_delta == 0 and col_delta == 1:
         while not (change_row == 0 and change_col == 1):
             turn_left()
 
+# -------------------------------
+# DETECTAR TORRADEIRA (78°)
+# -------------------------------
 def determinar_direcao_torradeira():
-    min_distance = float('inf')
-    direction_angle = None
+    global posicao_torradeira, change_row, change_col
 
-    # Resetar ângulo inicial dos motores
+    min_distance = 500
+    best_direction = None
+
     left_motor.reset_angle(0)
-    right_motor.reset_angle(0)
 
-    # Girar 360 graus (assumindo que 360 graus de rotação dos motores correspondem a 360 graus de rotação do robô)
-    while abs(left_motor.angle()) < 360:
-        robot.drive(0, 30)  # Girar no lugar a 30 graus por segundo
+    for _ in range(5):
         distance = ultrasonic_sensor.distance()
-        if distance < min_distance:
+        if distance <= 500 and distance < min_distance:
             min_distance = distance
-            direction_angle = left_motor.angle()
-        wait(100)
+            best_direction = (change_row, change_col)
+        turn_right()
+        wait(500)
 
     robot.stop()
-
-    if direction_angle is not None:
-        ev3.screen.print("Torradeira a {min_distance} mm na direção {direction_angle} graus.")
-        # Atualizar direção do robô para a direção da torradeira
-        atualizar_direcao_para_angulo(direction_angle)
+    if best_direction is not None:
+        delta_row, delta_col = best_direction
+        torradeira_row = robot_row + delta_row
+        torradeira_col = robot_col + delta_col
+        posicao_torradeira["row"] = torradeira_row
+        posicao_torradeira["col"] = torradeira_col
+        ev3.screen.clear()
+        ev3.screen.draw_text(10, 10, "Torradeira detectada!")
+        ev3.screen.draw_text(10, 30, "Distância: " + str(min_distance) + " mm")
+        ev3.screen.draw_text(10, 50, "Pos: (" + str(torradeira_row) + ", " + str(torradeira_col) + ")")
     else:
-        ev3.screen.print("Torradeira não encontrada.")
+        ev3.screen.clear()
+        ev3.screen.draw_text(10, 10, "Torradeira não detectada.")
 
 def atualizar_direcao_para_angulo(target_angle):
     current_angle = left_motor.angle()
     angle_to_turn = target_angle - current_angle
+    robot.turn(angle_to_turn)
 
-    # Girar o robô para o ângulo desejado
-    if angle_to_turn > 0:
-        robot.turn(angle_to_turn)
-    else:
-        robot.turn(angle_to_turn)
-
+# -------------------------------
+# LOOP PRINCIPAL
+# -------------------------------
 def realizar_jogada():
-    get_all_objects()  # Atualiza as informações sobre o ambiente
-    verify_objects()   # Verifica se o robô encontrou a manteiga, torradeira ou bolor
-    
+    # Atualiza a info do ambiente
+    get_all_objects()
+    # Verifica se o robô pegou manteiga, ou se bolor pegou robô, etc.
+    verify_objects()
+
     distance_torradeira = get_distance("Calor Torradeira")
-    # Detecta calor da torradeira e determina sua direção se necessário
     if distance_torradeira == 1:
         ev3.screen.print("Calor da torradeira detectado!")
         determinar_direcao_torradeira()
     else:
         ev3.screen.print("Nenhum calor detectado.")
         ev3.screen.print(distance_torradeira)
-    
-    # Determina o melhor movimento com base nas heurísticas definidas
+
+    # Usa a IA de movimento
     move = get_autonomous_move()
     if move:
         row_delta, col_delta = move
-        # Atualiza a direção do robô com base no movimento escolhido
+
+        # Guarda a posição atual para penalizar revisitas
+        last_positions.append((robot_row, robot_col))
+
+        # Ajusta direção e anda
         atualizar_direcao(row_delta, col_delta)
-        # Move o robô para a próxima casa
         andar_casa()
     else:
         ev3.screen.clear()
@@ -586,13 +540,18 @@ def realizar_jogada():
         wait(5000)
         exit()
 
-    # Atualiza a posição do bolor após o movimento do robô
+    # Move o bolor
     andar_bolor()
-    # Exibe as tabelas atualizadas para depuração
+
+    # Mostra tabelas
     print_all_tables(distancia_manteiga, calor_torradeira)
-    # Verifica se o jogo deve pausar e aguarda o tempo entre jogadas
+
+    # Faz pausa
     check_pause_and_wait(TEMPO_ENTRE_JOGADA)
 
+def main():
+    while True:
+        realizar_jogada()
 
-while True:
-    realizar_jogada()
+if __name__ == "__main__":
+    main()
